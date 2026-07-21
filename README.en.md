@@ -32,20 +32,14 @@ Private repos need `GITHUB_TOKEN` / `GH_TOKEN` or `gh auth login`.
 
 `dist/` is a build artifact — **do not commit** (gitignored).
 
-**Preferred: Actions tags + publishes**
-
-1. Merge to `main`
-2. GitHub → Actions → **Release** → Run workflow with version (e.g. `0.3.1`)
-3. CI creates tag `v0.3.1` and uploads multi-platform binaries
-
-**Or push a tag:**
+**Local one-liner (recommended):**
 
 ```bash
-git tag v0.3.1
-git push origin v0.3.1
+make release VERSION=0.3.2   # changelog summary → tag v0.3.2 → push → CI release
+make summary                 # commits since last stable tag
 ```
 
-Local helper (writes `dist/`, do not commit): `./scripts/release.sh 0.3.1`
+**Or:** GitHub → Actions → **Release** → Run workflow with a version.
 
 ## Self-test
 

@@ -1,9 +1,12 @@
 name: Release
 
-# 方式 1：推送 tag → 自动构建并发布
+# 方式 1（推荐）：本地 make 打 tag 并 push → 自动构建并发布
+#   make release VERSION=0.3.1
+#
+# 方式 2：手动推 tag
 #   git tag v0.3.1 && git push origin v0.3.1
 #
-# 方式 2：Actions 页面手动触发 → 自动打 tag 并发布
+# 方式 3：Actions 页面手动触发 → 自动打 tag 并发布
 #   workflow_dispatch → 填写 version（如 0.3.1）
 
 on:

@@ -35,20 +35,14 @@ asm upgrade -y          # 跳过确认
 
 `dist/` 是本地/CI 构建产物，**不要提交**（已在 `.gitignore`）。
 
-**推荐：Actions 自动打 tag + 发 Release**
-
-1. 合并代码到 `main`
-2. GitHub → Actions → **Release** → Run workflow  
-3. 填写版本号（如 `0.3.1`）→ 自动打 `v0.3.1` 并上传多平台二进制
-
-**或本地推 tag 触发：**
+**本地一键打 tag 并推送（推荐）：**
 
 ```bash
-git tag v0.3.1
-git push origin v0.3.1
+make release VERSION=0.3.2   # 打印变更摘要 → 打 v0.3.2 → push → 触发 CI 发版
+make summary                 # 只看相对上一正式 tag 的变更
 ```
 
-本地调试仍可用：`./scripts/release.sh 0.3.1`（会生成 `dist/`，仅本地，勿 commit）。
+**或在 GitHub 上手动：** Actions → **Release** → Run workflow，填版本号。
 
 ## 自测
 
