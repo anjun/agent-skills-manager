@@ -6,10 +6,8 @@
 
 Discover skills on tool and project roots, classify them, unify under `~/.agents/skills/` with symlinks for Claude / Cursor / Grok / Codex / Gemini, and **check** skills that have proven provenance for updates (read-only).
 
-- **Strengths**: multi-tool inventory, canonical home, conflicts, doctor, outdated  
+- **Strengths**: multi-tool inventory, canonical home, conflicts, doctor, outdated, self-update  
 - **Non-goals**: replacing [`npx skills`](https://github.com/vercel-labs/skills) marketplace install
-
-> Formerly `agentskills-migrate`. State auto-migrates from `~/.local/state/agentskills-migrate` → `~/.local/state/agent-skills-manager`.
 
 ## Install
 
@@ -18,6 +16,17 @@ go build -o bin/agent-skills-manager ./cmd/agent-skills-manager
 ln -sf agent-skills-manager bin/asm
 ./bin/asm version
 ```
+
+## Self-update (GitHub Releases)
+
+```bash
+asm upgrade --check
+asm upgrade
+asm upgrade -y
+```
+
+Default repo: `anjun/agent-skills-manager` (`ASM_GITHUB_REPO=owner/repo` to override).  
+Private repos need `GITHUB_TOKEN` / `GH_TOKEN` or `gh auth login`.
 
 ## Self-test
 
@@ -33,6 +42,8 @@ asm plan
 asm apply
 asm outdated              # check-only
 asm outdated --all        # include unknown
+asm upgrade --check       # check asm itself
+asm upgrade               # self-update from GitHub Releases
 asm doctor
 asm undo last
 ```

@@ -1,12 +1,15 @@
 package main
 
 import (
+	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"sort"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/anj/agent-skills-manager/embedded"
 	"github.com/anj/agent-skills-manager/internal/apply"
@@ -17,10 +20,12 @@ import (
 	"github.com/anj/agent-skills-manager/internal/outdated"
 	"github.com/anj/agent-skills-manager/internal/plan"
 	"github.com/anj/agent-skills-manager/internal/scan"
+	"github.com/anj/agent-skills-manager/internal/selfupdate"
 	"github.com/anj/agent-skills-manager/internal/vendorlist"
 )
 
-const version = "0.2.0"
+// version is the CLI version (override with -ldflags "-X main.version=...").
+var version = "0.3.0"
 
 func main() {
 	cfg := config.Default()
@@ -64,6 +69,8 @@ func main() {
 		runDoctor(cfg, vl)
 	case "outdated", "check-update", "check-updates":
 		runOutdated(cfg, vl)
+	case "upgrade", "self-update", "selfupdate":
+		runUpgrade(cfg, args)
 	default:
 		fmt.Fprintf(os.Stderr, cfg.T().S("main.unknown_cmd"), cmd)
 		usage(cfg)
@@ -405,6 +412,78 @@ func statusLabel(tr *i18n.T, s outdated.Status) string {
 		return tr.S("outdated.status_skipped")
 	default:
 		return string(s)
+	}
+}
+
+func runUpgrade(cfg *config.Config, args []string) {
+	tr := cfg.T()
+	checkOnly := false
+	for _, a := range args {
+		switch a {
+		case "--check", "-c":
+			checkOnly = true
+		case "--yes", "-y":
+			cfg.Yes = true
+		}
+	}
+	opt := selfupdate.Options{
+		Current:   version,
+		CheckOnly: checkOnly,
+		Yes:       cfg.Yes,
+	}
+	// Preview first when not --check and not --yes on TTY
+	if !checkOnly && !cfg.Yes {
+		preview, err := selfupdate.Run(context.Background(), selfupdate.Options{
+			Current:   version,
+			CheckOnly: true,
+		})
+		if err != nil {
+			fail(cfg, err)
+		}
+		if preview.UpToDate {
+			if cfg.JSON {
+				enc := json.NewEncoder(os.Stdout)
+				enc.SetIndent("", "  ")
+				_ = enc.Encode(preview)
+				return
+			}
+			fmt.Println(tr.S("upgrade.current", preview.Latest))
+			return
+		}
+		fmt.Println(tr.S("upgrade.available", preview.Current, preview.Latest, preview.Asset, preview.Repo))
+		fmt.Print(tr.S("upgrade.confirm"))
+		line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+		line = strings.TrimSpace(strings.ToLower(line))
+		if line != "y" && line != "yes" {
+			fmt.Println(tr.S("upgrade.aborted"))
+			return
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	res, err := selfupdate.Run(ctx, opt)
+	if err != nil {
+		fail(cfg, err)
+	}
+	if cfg.JSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(res)
+		return
+	}
+	if res.Updated {
+		fmt.Println(tr.S("upgrade.done", res.Current, res.Latest))
+		return
+	}
+	if res.UpToDate {
+		fmt.Println(tr.S("upgrade.current", res.Latest))
+		return
+	}
+	// check-only with update available
+	fmt.Println(tr.S("upgrade.available", res.Current, res.Latest, res.Asset, res.Repo))
+	if checkOnly {
+		fmt.Println(tr.S("upgrade.check_hint"))
 	}
 }
 

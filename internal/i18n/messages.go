@@ -114,10 +114,16 @@ var zh = map[string]string{
 	"outdated.status_skipped":  "跳过",
 	"outdated.summary":         "\n汇总：可更新=%d  已最新=%d  未知=%d  错误=%d  合计=%d",
 	"outdated.note":            "仅检查、不自动拉取。优先：skill 自有 git；其次 ~/.agents/.skill-lock.json（npx skills）对比 GitHub folder hash；手动 skill 无来源则 unknown。更新请用 npx skills update。",
+	"upgrade.current":          "asm 已是最新版本 %s",
+	"upgrade.available":        "发现新版本：%s → %s\n  资源：%s\n  仓库：%s",
+	"upgrade.confirm":          "是否下载并替换当前二进制？[y/N] ",
+	"upgrade.aborted":          "已取消更新",
+	"upgrade.done":             "已更新：%s → %s\n重新打开终端或再执行 asm version 确认。",
+	"upgrade.check_hint":       "执行 asm upgrade 进行在线更新。",
 	"main.usage": `agent-skills-manager (asm) %s — Agent Skills 归口与治理中枢
 
 用法：
-  asm scan | plan | apply | undo | doctor | outdated
+  asm scan | plan | apply | undo | doctor | outdated | upgrade
   agent-skills-manager <command>
 
 命令：
@@ -127,6 +133,7 @@ var zh = map[string]string{
   undo [id|last]        回滚
   doctor                健康检查
   outdated              检查可溯源 skill 是否有更新（只读）
+  upgrade [--check]     从 GitHub Releases 更新 asm 自身
 
 参数：
   --json                机器可读 JSON（字段仍为英文）
@@ -142,7 +149,7 @@ var zh = map[string]string{
   --zh / --en
 
 定位：多工具 skill 归口到 ~/.agents/skills；安装/市场上游仍用 npx skills。
-Grok bundled：优先 grok inspect。outdated：仅可证明有上游的 skill（check-only）。
+asm upgrade 从 GitHub Releases 自更新（私有仓需 GITHUB_TOKEN 或 gh auth）。
 `,
 }
 
@@ -251,10 +258,16 @@ var en = map[string]string{
 	"outdated.status_skipped":  "skipped",
 	"outdated.summary": "\nSummary: outdated=%d  current=%d  unknown=%d  error=%d  total=%d",
 	"outdated.note":    "Check-only (no pull). Order: skill-dir git origin; then ~/.agents/.skill-lock.json (npx skills) GitHub folder hash; manual installs without lock stay unknown. Update via npx skills update.",
+	"upgrade.current":   "asm is up to date (%s)",
+	"upgrade.available": "update available: %s → %s\n  asset: %s\n  repo: %s",
+	"upgrade.confirm":   "Download and replace the current binary? [y/N] ",
+	"upgrade.aborted":   "upgrade cancelled",
+	"upgrade.done":      "updated: %s → %s\nre-open the shell or run asm version to confirm.",
+	"upgrade.check_hint": "run: asm upgrade",
 	"main.usage": `agent-skills-manager (asm) %s — agent skills home & governance hub
 
 Usage:
-  asm scan | plan | apply | undo | doctor | outdated
+  asm scan | plan | apply | undo | doctor | outdated | upgrade
   agent-skills-manager <command>
 
 Commands:
@@ -264,6 +277,7 @@ Commands:
   undo [id|last]        rollback
   doctor                health check
   outdated              check skills with provenance for updates (read-only)
+  upgrade [--check]     self-update from GitHub Releases
 
 Flags:
   --json / --all / --yes / --strategy / --only / --exclude
@@ -271,6 +285,6 @@ Flags:
   --lang zh|en  (env ASM_LANG)  --zh / --en
 
 Scope: unify under ~/.agents/skills; marketplace install stays with npx skills.
-Grok bundled via grok inspect. outdated: proven upstream only (check-only).
+asm upgrade uses GitHub Releases (private repos need GITHUB_TOKEN or gh auth).
 `,
 }

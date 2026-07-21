@@ -4,9 +4,6 @@
 
 Complements [`npx skills`](https://github.com/vercel-labs/skills) (marketplace install/update). This tool is the **local multi-agent skill housekeeper**, not a second registry client.
 
-Formerly `agentskills-migrate`. State migrates automatically:
-`~/.local/state/agentskills-migrate` → `~/.local/state/agent-skills-manager`.
-
 ## Decisions
 
 | # | Topic | Choice |
@@ -21,7 +18,8 @@ Formerly `agentskills-migrate`. State migrates automatically:
 | 8 | Rollback | Transaction log + `undo` |
 | 9 | Product name | **agent-skills-manager** / **asm** |
 | 10 | Product scope | **归口 + 治理中枢** — not full marketplace CLI |
-| 11 | Skill updates | **A**: proven provenance only; **check-only** v1 (no git pull / no apply yet) |
+| 11 | Skill updates | **A**: proven provenance only; **check-only** (no git pull / no apply yet) |
+| 12 | Tool self-update | GitHub Releases (`asm upgrade`); default repo `anjun/agent-skills-manager`; private needs token |
 
 ## Classification
 
@@ -43,7 +41,8 @@ asm plan                 # proposed moves/symlinks (no writes)
 asm apply [--yes] [--strategy ...]
 asm undo [id|last]
 asm doctor
-asm outdated [--all]     # check-only update report
+asm outdated [--all]     # check-only skill update report
+asm upgrade [--check]    # self-update from GitHub Releases
 ```
 
 ### outdated (check-only)

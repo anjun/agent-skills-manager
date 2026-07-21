@@ -6,10 +6,8 @@
 
 发现本机 / 项目中的 skills，分类后统一到 `~/.agents/skills/`，在 Claude / Cursor / Grok / Codex / Gemini 等目录用符号链接接线；并支持对**可证明有上游**的 skill 做**只读**更新检查。
 
-- **做强**：多工具盘点、真源归口、冲突处理、doctor、outdated  
+- **做强**：多工具盘点、真源归口、冲突处理、doctor、outdated、工具自更新  
 - **不做**：替代 [`npx skills`](https://github.com/vercel-labs/skills) 的 marketplace 安装（安装 / 有 lock 的更新仍用它）
-
-> 原名 `agentskills-migrate`。状态目录会从 `~/.local/state/agentskills-migrate` **自动迁移**到 `~/.local/state/agent-skills-manager`。
 
 ## 安装
 
@@ -21,6 +19,17 @@ ln -sf agent-skills-manager bin/asm
 # 可选：放入 PATH
 cp bin/agent-skills-manager bin/asm ~/bin/
 ```
+
+## 自更新（GitHub Releases）
+
+```bash
+asm upgrade --check     # 仅检查
+asm upgrade             # 从 GitHub Releases 下载并替换当前二进制
+asm upgrade -y          # 跳过确认
+```
+
+默认仓库：`anjun/agent-skills-manager`（可用环境变量 `ASM_GITHUB_REPO=owner/repo` 覆盖）。  
+私有仓库需要 token：`GITHUB_TOKEN` / `GH_TOKEN`，或已 `gh auth login`。
 
 ## 自测
 
@@ -36,6 +45,8 @@ asm plan                          # 归口预览（不写盘）
 asm apply                         # 迁移 + 符号链接
 asm outdated                      # 可溯源 skill 是否有更新（只读）
 asm outdated --all                # 连 unknown 也列出
+asm upgrade --check               # 检查 asm 自身是否有新版本
+asm upgrade                       # 在线更新 asm 自身
 asm doctor
 asm undo last
 ```
