@@ -31,6 +31,25 @@ asm upgrade -y          # 跳过确认
 默认仓库：`anjun/agent-skills-manager`（可用环境变量 `ASM_GITHUB_REPO=owner/repo` 覆盖）。  
 私有仓库需要 token：`GITHUB_TOKEN` / `GH_TOKEN`，或已 `gh auth login`。
 
+## 发版（GitHub Actions）
+
+`dist/` 是本地/CI 构建产物，**不要提交**（已在 `.gitignore`）。
+
+**推荐：Actions 自动打 tag + 发 Release**
+
+1. 合并代码到 `main`
+2. GitHub → Actions → **Release** → Run workflow  
+3. 填写版本号（如 `0.3.1`）→ 自动打 `v0.3.1` 并上传多平台二进制
+
+**或本地推 tag 触发：**
+
+```bash
+git tag v0.3.1
+git push origin v0.3.1
+```
+
+本地调试仍可用：`./scripts/release.sh 0.3.1`（会生成 `dist/`，仅本地，勿 commit）。
+
 ## 自测
 
 ```bash

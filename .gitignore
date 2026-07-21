@@ -1,5 +1,6 @@
 # Build artifacts
 /bin/
+/dist/
 /agent-skills-manager
 /asm
 *.exe

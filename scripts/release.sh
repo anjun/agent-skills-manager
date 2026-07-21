@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Build multi-platform binaries and create a GitHub Release.
+# Local helper: build multi-platform binaries into dist/ and create a GitHub Release.
+# Preferred path in CI: push tag vX.Y.Z or use Actions → Release workflow_dispatch.
+# dist/ is gitignored — never commit build artifacts.
+#
 # Usage:
 #   ./scripts/release.sh 0.3.0
 #   ./scripts/release.sh v0.3.0 --draft

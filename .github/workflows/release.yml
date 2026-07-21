@@ -1,0 +1,132 @@
+name: Release
+
+# 方式 1：推送 tag → 自动构建并发布
+#   git tag v0.3.1 && git push origin v0.3.1
+#
+# 方式 2：Actions 页面手动触发 → 自动打 tag 并发布
+#   workflow_dispatch → 填写 version（如 0.3.1）
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "版本号（可不带 v，例如 0.3.1）"
+        required: true
+        type: string
+      prerelease:
+        description: "标记为 pre-release"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version / tag
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            RAW="${{ inputs.version }}"
+            RAW="${RAW#v}"
+            TAG="v${RAW}"
+            echo "version=${RAW}" >> "$GITHUB_OUTPUT"
+            echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+            echo "prerelease=${{ inputs.prerelease }}" >> "$GITHUB_OUTPUT"
+          else
+            TAG="${GITHUB_REF_NAME}"
+            RAW="${TAG#v}"
+            echo "version=${RAW}" >> "$GITHUB_OUTPUT"
+            echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+            # pre-release if tag contains -
+            if [[ "$TAG" == *-* ]]; then
+              echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      - name: Create and push tag (manual dispatch only)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          TAG: ${{ steps.ver.outputs.tag }}
+        run: |
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists on remote/local history"
+            # Ensure we are releasing that tag's commit if it points elsewhere — use current HEAD and move only if force not allowed
+            EXISTING="$(git rev-parse "$TAG")"
+            HEAD="$(git rev-parse HEAD)"
+            if [ "$EXISTING" != "$HEAD" ]; then
+              echo "Error: tag $TAG already points to $EXISTING, HEAD is $HEAD" >&2
+              exit 1
+            fi
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$TAG" -m "Release $TAG"
+            git push origin "$TAG"
+          fi
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build multi-platform binaries
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          targets=(
+            "darwin amd64"
+            "darwin arm64"
+            "linux amd64"
+            "linux arm64"
+            "windows amd64"
+          )
+          for t in "${targets[@]}"; do
+            set -- $t
+            goos=$1
+            goarch=$2
+            out="agent-skills-manager-${goos}-${goarch}"
+            if [ "$goos" = "windows" ]; then
+              out="${out}.exe"
+            fi
+            echo "Building $out"
+            CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build \
+              -ldflags "-s -w -X main.version=${VERSION}" \
+              -o "dist/${out}" \
+              ./cmd/agent-skills-manager
+          done
+          (cd dist && shasum -a 256 * > checksums.txt)
+          ls -la dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: ${{ steps.ver.outputs.tag }}
+          generate_release_notes: true
+          prerelease: ${{ steps.ver.outputs.prerelease == 'true' }}
+          files: |
+            dist/agent-skills-manager-darwin-amd64
+            dist/agent-skills-manager-darwin-arm64
+            dist/agent-skills-manager-linux-amd64
+            dist/agent-skills-manager-linux-arm64
+            dist/agent-skills-manager-windows-amd64.exe
+            dist/checksums.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

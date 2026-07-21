@@ -28,6 +28,25 @@ asm upgrade -y
 Default repo: `anjun/agent-skills-manager` (`ASM_GITHUB_REPO=owner/repo` to override).  
 Private repos need `GITHUB_TOKEN` / `GH_TOKEN` or `gh auth login`.
 
+## Releasing (GitHub Actions)
+
+`dist/` is a build artifact — **do not commit** (gitignored).
+
+**Preferred: Actions tags + publishes**
+
+1. Merge to `main`
+2. GitHub → Actions → **Release** → Run workflow with version (e.g. `0.3.1`)
+3. CI creates tag `v0.3.1` and uploads multi-platform binaries
+
+**Or push a tag:**
+
+```bash
+git tag v0.3.1
+git push origin v0.3.1
+```
+
+Local helper (writes `dist/`, do not commit): `./scripts/release.sh 0.3.1`
+
 ## Self-test
 
 ```bash
