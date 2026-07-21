@@ -12,6 +12,7 @@ import (
 	"github.com/anj/agent-skills-manager/internal/roots"
 	"github.com/anj/agent-skills-manager/internal/scan"
 	"github.com/anj/agent-skills-manager/internal/skill"
+	"github.com/anj/agent-skills-manager/internal/skillgate"
 	"github.com/anj/agent-skills-manager/internal/skilllock"
 	"github.com/anj/agent-skills-manager/internal/vendorlist"
 )
@@ -112,6 +113,21 @@ func Run(cfg *config.Config, vl *vendorlist.List) ([]Issue, error) {
 				path = le.LockPath + "#" + name
 			}
 			issues = append(issues, Issue{"warn", path, msg})
+		}
+	}
+
+	// skill gates (disabled globally or per-tool)
+	if gates, err := skillgate.Open(cfg); err == nil {
+		for _, name := range gates.List() {
+			ent := gates.Get(name)
+			if ent.GlobalOff {
+				issues = append(issues, Issue{"info", "gate:" + name, tr.S("doctor.gate_global", name, name)})
+				continue
+			}
+			if len(ent.ToolsOff) > 0 {
+				issues = append(issues, Issue{"info", "gate:" + name,
+					tr.S("doctor.gate_tools", name, strings.Join(ent.ToolsOff, ", "), name)})
+			}
 		}
 	}
 

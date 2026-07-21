@@ -21,6 +21,7 @@ Complements [`npx skills`](https://github.com/vercel-labs/skills) (marketplace i
 | 11 | Skill updates | proven provenance only; `outdated` check + optional `--update` (skill-lock / git / knownsource Catalog) |
 | 12 | Tool self-update | GitHub Releases (`asm upgrade`); default repo `anjun/agent-skills-manager`; private needs token |
 | 13 | Daily unify entry | `asm sync` = rescan → plan → apply; conflicts same as apply; personal primary tools Claude/Cursor/Grok/Codex |
+| 14 | Skill gates | `disable`/`enable` global or per-tool; global parks content under state `disabled-skills/`; plan/sync respect gates |
 
 ## Classification
 

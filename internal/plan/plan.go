@@ -9,6 +9,7 @@ import (
 	"github.com/anj/agent-skills-manager/internal/fsutil"
 	"github.com/anj/agent-skills-manager/internal/roots"
 	"github.com/anj/agent-skills-manager/internal/scan"
+	"github.com/anj/agent-skills-manager/internal/skillgate"
 )
 
 type ActionType string
@@ -71,10 +72,22 @@ func Build(cfg *config.Config, res *scan.Result) *Plan {
 	}
 	names := sortedKeys(byName)
 	wireRoots := roots.WireRoots(cfg)
+	gates, _ := skillgate.Open(cfg) // best-effort; missing state = all enabled
 
 	for _, name := range names {
 		entries := byName[name]
 		dest := filepath.Join(p.AgentsDir, name)
+
+		// Globally disabled skills must not be re-migrated or re-wired by sync/apply.
+		if gates != nil && gates.IsGlobalOff(name) {
+			for _, e := range entries {
+				p.Actions = append(p.Actions, Action{
+					Type: ActionSkip, Name: name, SourcePath: e.Path, Tool: e.Tool, Hash: e.Hash,
+					Note: "globally disabled (asm enable " + name + ")",
+				})
+			}
+			continue
+		}
 
 		var contents []contentSrc
 		seenContentPath := map[string]bool{}
@@ -167,8 +180,16 @@ func Build(cfg *config.Config, res *scan.Result) *Plan {
 			})
 		}
 
-		// wire mainstream tool roots
+		// wire mainstream tool roots (respect per-tool disable gates)
 		for _, wr := range wireRoots {
+			if gates != nil && gates.IsToolOff(name, wr.Tool) {
+				p.Actions = append(p.Actions, Action{
+					Type: ActionSkip, Name: name,
+					SourcePath: filepath.Join(wr.Path, name), DestPath: dest, Tool: wr.Tool,
+					Note: "disabled for " + wr.Tool + " (asm enable " + name + " --tool " + wr.Tool + ")",
+				})
+				continue
+			}
 			linkPath := filepath.Join(wr.Path, name)
 			// skip if linkPath is the primary source path and we're migrating (handled after move)
 			p.Actions = append(p.Actions, Action{

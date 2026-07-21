@@ -22,6 +22,7 @@ import (
 	"github.com/anj/agent-skills-manager/internal/remove"
 	"github.com/anj/agent-skills-manager/internal/scan"
 	"github.com/anj/agent-skills-manager/internal/selfupdate"
+	"github.com/anj/agent-skills-manager/internal/skillgate"
 	"github.com/anj/agent-skills-manager/internal/vendorlist"
 )
 
@@ -75,6 +76,12 @@ func main() {
 		runOutdated(cfg, vl, args)
 	case "remove", "rm", "uninstall":
 		runRemove(cfg, vl, args)
+	case "disable", "off":
+		runSkillGate(cfg, false, args)
+	case "enable", "on":
+		runSkillGate(cfg, true, args)
+	case "gates", "gate":
+		runGates(cfg, args)
 	case "upgrade", "self-update", "selfupdate":
 		runUpgrade(cfg, args)
 	default:
@@ -576,6 +583,162 @@ func runRemove(cfg *config.Config, vl *vendorlist.List, args []string) {
 	for _, p := range res.LockModified {
 		fmt.Printf("  lock: %s\n", fsutil.RelHome(p))
 	}
+}
+
+// runSkillGate handles enable/disable (global or --tool).
+func runSkillGate(cfg *config.Config, enable bool, args []string) {
+	tr := cfg.T()
+	var tools []string
+	var names []string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "--help" || a == "-h":
+			if enable {
+				fmt.Print(tr.S("gate.enable_help"))
+			} else {
+				fmt.Print(tr.S("gate.disable_help"))
+			}
+			return
+		case a == "--tool" || a == "-t":
+			if i+1 >= len(args) {
+				fail(cfg, fmt.Errorf("%s", tr.S("gate.need_tool")))
+			}
+			i++
+			tools = append(tools, args[i])
+		case strings.HasPrefix(a, "--tool="):
+			tools = append(tools, strings.TrimPrefix(a, "--tool="))
+		case strings.HasPrefix(a, "-"):
+			fail(cfg, fmt.Errorf("%s", tr.S("gate.bad_flag", a)))
+		default:
+			names = append(names, a)
+		}
+	}
+	if len(names) == 0 {
+		fail(cfg, fmt.Errorf("%s", tr.S("gate.need_name")))
+	}
+
+	store, err := skillgate.Open(cfg)
+	if err != nil {
+		fail(cfg, err)
+	}
+
+	type row struct {
+		Name string             `json:"name"`
+		Res  *skillgate.Result  `json:"result"`
+		Err  string             `json:"error,omitempty"`
+	}
+	var rows []row
+	for _, name := range names {
+		var (
+			r   *skillgate.Result
+			err error
+		)
+		if enable {
+			r, err = store.Enable(name, tools)
+		} else {
+			r, err = store.Disable(name, tools)
+		}
+		if err != nil {
+			rows = append(rows, row{Name: name, Err: err.Error()})
+			continue
+		}
+		rows = append(rows, row{Name: name, Res: r})
+	}
+
+	if cfg.JSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(rows)
+		// non-zero exit if any error
+		for _, r := range rows {
+			if r.Err != "" {
+				os.Exit(1)
+			}
+		}
+		return
+	}
+
+	failed := 0
+	for _, r := range rows {
+		if r.Err != "" {
+			failed++
+			fmt.Printf("❌ %s: %s\n", r.Name, r.Err)
+			continue
+		}
+		res := r.Res
+		mark := "✓"
+		if res.Already {
+			mark = "·"
+		}
+		fmt.Printf("%s %s — %s\n", mark, res.Name, res.Message)
+		for _, p := range res.Removed {
+			fmt.Printf("    − %s\n", shortPath(p))
+		}
+		for _, p := range res.Linked {
+			fmt.Printf("    + %s\n", shortPath(p))
+		}
+		if res.Parked != "" {
+			fmt.Printf("    parked → %s\n", shortPath(res.Parked))
+		}
+		if res.Restored != "" {
+			fmt.Printf("    restored → %s\n", shortPath(res.Restored))
+		}
+	}
+	if failed > 0 {
+		os.Exit(1)
+	}
+}
+
+func runGates(cfg *config.Config, args []string) {
+	tr := cfg.T()
+	for _, a := range args {
+		if a == "--help" || a == "-h" {
+			fmt.Print(tr.S("gate.list_help"))
+			return
+		}
+	}
+	store, err := skillgate.Open(cfg)
+	if err != nil {
+		fail(cfg, err)
+	}
+	names := store.List()
+	type item struct {
+		Name      string   `json:"name"`
+		GlobalOff bool     `json:"global_off"`
+		ToolsOff  []string `json:"tools_off,omitempty"`
+	}
+	var items []item
+	for _, n := range names {
+		e := store.Get(n)
+		items = append(items, item{Name: n, GlobalOff: e.GlobalOff, ToolsOff: e.ToolsOff})
+	}
+	if cfg.JSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(items)
+		return
+	}
+	if len(items) == 0 {
+		fmt.Println(tr.S("gate.list_empty"))
+		return
+	}
+	fmt.Println(tr.S("gate.list_title"))
+	w := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
+	fmt.Fprintf(w, "%s\t%s\t%s\n", tr.S("gate.col_name"), tr.S("gate.col_global"), tr.S("gate.col_tools"))
+	for _, it := range items {
+		g := tr.S("gate.no")
+		if it.GlobalOff {
+			g = tr.S("gate.yes")
+		}
+		tools := "-"
+		if len(it.ToolsOff) > 0 {
+			tools = strings.Join(it.ToolsOff, ",")
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\n", it.Name, g, tools)
+	}
+	_ = w.Flush()
+	fmt.Println(tr.S("gate.list_hint"))
 }
 
 func runUpgrade(cfg *config.Config, args []string) {

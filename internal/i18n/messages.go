@@ -73,6 +73,8 @@ var zh = map[string]string{
 	"doctor.agents_missing":   "真源目录 ~/.agents/skills 不存在",
 	"doctor.lock_orphan":    "skill-lock 列出 %s 但磁盘无此 skill — 清理: asm remove %s -y",
 	"doctor.lock_orphan_at": "skill-lock 列出 %s（文件 %s）但磁盘无此 skill — 清理: asm remove %s -y",
+	"doctor.gate_global":    "skill %s 已全局关闭（工具均不可见）— 开启: asm enable %s",
+	"doctor.gate_tools":     "skill %s 已对工具关闭: %s — 开启: asm enable %s --tool <name>",
 
 	// apply
 	"apply.need_yes":          "非 TTY 环境拒绝执行 apply，请加 --yes",
@@ -173,10 +175,47 @@ var zh = map[string]string{
   日常重装 Agent 后优先跑这条。
 `,
 
+	"gate.need_name":  "请指定 skill 名称，例如: asm disable grill-me --tool codex",
+	"gate.need_tool":  "--tool 需要参数，例如: --tool codex",
+	"gate.bad_flag":   "未知参数 %s",
+	"gate.list_empty": "当前没有关闭的 skill（全部启用）",
+	"gate.list_title": "Skill 开关状态",
+	"gate.col_name":   "名称",
+	"gate.col_global": "全局关",
+	"gate.col_tools":  "按工具关",
+	"gate.yes":        "是",
+	"gate.no":         "否",
+	"gate.list_hint":  "\n开启: asm enable <name> [--tool codex]\n关闭: asm disable <name> [--tool codex]",
+	"gate.disable_help": `asm disable — 关闭 skill（工具将扫描不到）
+
+用法:
+  asm disable <name> [name2...]                 # 全局关闭（从 ~/.agents/skills 挪走并拆掉所有工具链接）
+  asm disable <name> --tool codex               # 仅对 codex 关闭
+  asm disable <name> -t claude,cursor           # 多个工具
+
+别名: off
+说明: sync/apply 不会把已关闭的 skill 重新接线。
+`,
+	"gate.enable_help": `asm enable — 启用 skill
+
+用法:
+  asm enable <name>                             # 全局开启并接到全部工具
+  asm enable <name> --tool codex                # 仅对 codex 开启
+  asm enable <name> -t claude,grok
+
+别名: on
+`,
+	"gate.list_help": `asm gates — 列出已关闭的 skill
+
+用法:
+  asm gates
+  asm gates --json
+`,
+
 	"main.usage": `agent-skills-manager (asm) %s — Agent Skills 归口与治理中枢
 
 用法：
-  asm scan | plan | apply | sync | undo | doctor | outdated | remove | upgrade
+  asm scan | plan | apply | sync | undo | doctor | outdated | remove | disable | enable | gates | upgrade
   agent-skills-manager <command>
 
 命令：
@@ -188,6 +227,9 @@ var zh = map[string]string{
   doctor                健康检查（含 provenance 提示）
   outdated [--update]   检查 skill 更新；--update 尝试自动更新
   remove <name...>      全局卸载指定 skill（别名 rm）
+  disable <name> [-t]   关闭 skill（全局或指定工具）
+  enable <name> [-t]    启用 skill
+  gates                 列出关闭状态
   upgrade [--check]     从 GitHub Releases 更新 asm 自身
 
 参数：
@@ -275,6 +317,8 @@ var en = map[string]string{
 	"doctor.agents_missing":   "canonical agents skills dir missing",
 	"doctor.lock_orphan":    "skill-lock lists %s but skill not on disk — clean: asm remove %s -y",
 	"doctor.lock_orphan_at": "skill-lock lists %s (file %s) but skill not on disk — clean: asm remove %s -y",
+	"doctor.gate_global":    "skill %s globally disabled — enable: asm enable %s",
+	"doctor.gate_tools":     "skill %s disabled for tools: %s — enable: asm enable %s --tool <name>",
 
 	"apply.need_yes":         "refusing to apply without --yes when not a TTY",
 	"apply.about":            "\nAbout to apply: migrate=%d  link=%d (skips omitted)",
@@ -369,10 +413,47 @@ Usage:
 After reinstalling an agent, prefer this command.
 `,
 
+	"gate.need_name":  "specify skill name, e.g. asm disable grill-me --tool codex",
+	"gate.need_tool":  "--tool needs a value, e.g. --tool codex",
+	"gate.bad_flag":   "unknown flag %s",
+	"gate.list_empty": "no disabled skills (all enabled)",
+	"gate.list_title": "Skill gates",
+	"gate.col_name":   "name",
+	"gate.col_global": "global_off",
+	"gate.col_tools":  "tools_off",
+	"gate.yes":        "yes",
+	"gate.no":         "no",
+	"gate.list_hint":  "\nenable: asm enable <name> [--tool codex]\ndisable: asm disable <name> [--tool codex]",
+	"gate.disable_help": `asm disable — hide a skill from agent tools
+
+Usage:
+  asm disable <name> [name2...]           # global off (park agents + remove all tool links)
+  asm disable <name> --tool codex         # codex only
+  asm disable <name> -t claude,cursor
+
+Alias: off
+sync/apply will not re-wire disabled skills.
+`,
+	"gate.enable_help": `asm enable — show a skill to agent tools again
+
+Usage:
+  asm enable <name>                       # global on + wire all tools
+  asm enable <name> --tool codex
+  asm enable <name> -t claude,grok
+
+Alias: on
+`,
+	"gate.list_help": `asm gates — list disabled skills
+
+Usage:
+  asm gates
+  asm gates --json
+`,
+
 	"main.usage": `agent-skills-manager (asm) %s — agent skills home & governance hub
 
 Usage:
-  asm scan | plan | apply | sync | undo | doctor | outdated | remove | upgrade
+  asm scan | plan | apply | sync | undo | doctor | outdated | remove | disable | enable | gates | upgrade
   agent-skills-manager <command>
 
 Commands:
@@ -384,6 +465,9 @@ Commands:
   doctor                health check (incl. provenance hints)
   outdated [--update]   check skill updates; --update applies where possible
   remove <name...>      uninstall skill globally (alias: rm)
+  disable <name> [-t]   disable skill (global or per-tool)
+  enable <name> [-t]    enable skill
+  gates                 list disable state
   upgrade [--check]     self-update from GitHub Releases
 
 Flags:

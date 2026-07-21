@@ -77,6 +77,13 @@ asm remove write-a-skill          # 全局卸载指定 skill（真源 + 各工�
 asm remove foo bar -y             # 多个，跳过确认
 asm doctor                        # 健康检查（断链、缺真源、无 provenance、陈旧 lock）
 asm upgrade --check               # 检查 asm 自身是否有新版本
+
+# 启用 / 关闭 skill（关闭后对应工具扫描不到）
+asm disable grill-me              # 全局关闭（内容挪到 state，拆掉所有工具链接）
+asm enable grill-me               # 全局开启并重新接线
+asm disable grill-me --tool codex # 仅对 Codex 关闭
+asm enable grill-me -t codex      # 仅对 Codex 开启
+asm gates                         # 列出关闭状态
 ```
 
 ### `outdated --update` 会做什么
