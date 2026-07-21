@@ -113,7 +113,7 @@ var zh = map[string]string{
 	"outdated.status_error":    "错误",
 	"outdated.status_skipped":  "跳过",
 	"outdated.summary":         "\n汇总：可更新=%d  已最新=%d  未知=%d  错误=%d  合计=%d",
-	"outdated.note":            "默认只检查。加 --update 可尝试自动更新：skill-lock→npx skills；dws→dws skill setup；git skill→git pull。",
+	"outdated.note":            "默认只检查。加 --update 可尝试自动更新：skill-lock→npx skills；known(Catalog)→UpdateSpec；git skill→git pull。",
 	"outdated.update_begin":    "\n── 自动更新 ──",
 	"outdated.update_summary":  "\n更新结果：成功=%d  跳过=%d  失败=%d",
 	"outdated.help": `asm outdated — 检查（并可选更新）可溯源 skill
@@ -128,7 +128,7 @@ var zh = map[string]string{
 
 更新路由:
   skill-lock  → npx skills update … -g -y
-  dws         → dws skill setup --mode mono --target all --yes
+  known       → knownsource.Catalog 的 UpdateSpec（如 dws CLI）
   git skill   → git pull --ff-only
   上游已删    → 跳过
 `,
@@ -293,7 +293,7 @@ var en = map[string]string{
 	"outdated.status_error":    "error",
 	"outdated.status_skipped":  "skipped",
 	"outdated.summary": "\nSummary: outdated=%d  current=%d  unknown=%d  error=%d  total=%d",
-	"outdated.note":    "Check-only by default. Pass --update to refresh: skill-lock→npx skills; dws→dws skill setup; git skill→git pull.",
+	"outdated.note":    "Check-only by default. Pass --update to refresh: skill-lock→npx skills; known(Catalog)→UpdateSpec; git skill→git pull.",
 	"outdated.update_begin":   "\n── auto-update ──",
 	"outdated.update_summary": "\nUpdate result: ok=%d  skipped=%d  failed=%d",
 	"outdated.help": `asm outdated — check (and optionally update) skills with provenance
@@ -308,7 +308,7 @@ Usage:
 
 Routes:
   skill-lock  → npx skills update … -g -y
-  dws         → dws skill setup --mode mono --target all --yes
+  known       → knownsource.Catalog UpdateSpec (e.g. dws CLI)
   git skill   → git pull --ff-only
   deleted     → skip
 `,

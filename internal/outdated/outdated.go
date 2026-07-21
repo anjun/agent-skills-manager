@@ -362,13 +362,9 @@ func checkKnownSource(ent Entry, contentPath string, ks knownsource.Source, tree
 		ent.Message = fmt.Sprintf("known source %s@%s (%d files match)", ks.OwnerRepo, refLabel, checked)
 		return ent
 	}
-	hint := "update via dws upgrade -y then dws skill setup --mode mono --yes"
-	if !ks.PreferRelease {
-		hint = "update via upstream installer"
-	}
 	ent.Status = StatusOutdated
 	ent.Message = fmt.Sprintf("known source %s@%s: %d/%d files differ (e.g. %s); %s",
-		ks.OwnerRepo, refLabel, mismatched, checked+mismatched, firstPath, hint)
+		ks.OwnerRepo, refLabel, mismatched, checked+mismatched, firstPath, ks.OutdatedHint())
 	return ent
 }
 

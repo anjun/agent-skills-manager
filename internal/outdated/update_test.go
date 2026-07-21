@@ -2,6 +2,7 @@ package outdated
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"testing"
 )
@@ -40,7 +41,8 @@ func TestApplyUpdatesSkillLockAndSkipDeleted(t *testing.T) {
 	}
 }
 
-func TestApplyUpdatesDWSOnce(t *testing.T) {
+func TestApplyUpdatesKnownOnce(t *testing.T) {
+	// dws is catalog-driven; three copies must produce one UpdateSpec run.
 	report := &Result{
 		Entries: []Entry{
 			{Name: "dws", Status: StatusOutdated, Provenance: ProvKnown, Path: "/a/dws",
@@ -55,6 +57,12 @@ func TestApplyUpdatesDWSOnce(t *testing.T) {
 	ur := ApplyUpdates(report, UpdateOptions{
 		Yes:    true,
 		Stdout: &bytes.Buffer{},
+		LookPath: func(file string) (string, error) {
+			if file == "dws" {
+				return "/usr/local/bin/dws", nil
+			}
+			return "", os.ErrNotExist
+		},
 		RunCmd: func(dir, name string, args ...string) (string, error) {
 			line := name + " " + strings.Join(args, " ")
 			if strings.Contains(line, "skill setup") {
@@ -66,15 +74,42 @@ func TestApplyUpdatesDWSOnce(t *testing.T) {
 			return "ok", nil
 		},
 	})
-	// LookPath for dws may skip if missing
 	if len(ur.Items) != 1 {
-		t.Fatalf("want 1 dws update item, got %+v", ur.Items)
+		t.Fatalf("want 1 known update item, got %+v", ur.Items)
 	}
-	if ur.Items[0].Skipped {
-		t.Skip("dws not on PATH in this environment")
+	if ur.Items[0].Skipped || !ur.Items[0].OK {
+		t.Fatalf("item=%+v", ur.Items[0])
+	}
+	if ur.Items[0].Action != "dws" {
+		t.Fatalf("action=%s", ur.Items[0].Action)
 	}
 	if nSetup != 1 || nUpgrade != 1 {
 		t.Fatalf("setup=%d upgrade=%d (want 1 each)", nSetup, nUpgrade)
+	}
+}
+
+func TestApplyUpdatesKnownMissingBin(t *testing.T) {
+	report := &Result{
+		Entries: []Entry{
+			{Name: "dws", Status: StatusOutdated, Provenance: ProvKnown},
+		},
+	}
+	ur := ApplyUpdates(report, UpdateOptions{
+		Yes:    true,
+		Stdout: &bytes.Buffer{},
+		LookPath: func(file string) (string, error) {
+			return "", os.ErrNotExist
+		},
+		RunCmd: func(dir, name string, args ...string) (string, error) {
+			t.Fatal("should not run when bin missing")
+			return "", nil
+		},
+	})
+	if len(ur.Items) != 1 || !ur.Items[0].Skipped {
+		t.Fatalf("%+v", ur.Items)
+	}
+	if !strings.Contains(ur.Items[0].Message, "dws") {
+		t.Fatalf("msg=%s", ur.Items[0].Message)
 	}
 }
 

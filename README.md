@@ -76,9 +76,11 @@ asm undo last
 | 来源 | 动作 |
 |------|------|
 | skill-lock（npx skills） | `npx skills update <names> -g -y` |
-| known（dws） | `dws skill setup --mode mono --target all --yes`（失败则 `dws upgrade -y`） |
+| known（`knownsource.Catalog`） | 按目录 `UpdateSpec` 执行（当前 dws：`upgrade -y` + `skill setup mono`） |
 | git skill 目录 | `git pull --ff-only` |
 | 上游已删除 / 无路径 | 跳过并提示 |
+
+仓库自维护但无 skill-lock / 非 git 的 skill：在 `internal/knownsource` 增加 Catalog 条目（指纹 + 上游路径 + 更新命令）即可接入检查与 `--update`。
 
 ## 许可证
 

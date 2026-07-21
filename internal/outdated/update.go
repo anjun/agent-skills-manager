@@ -10,6 +10,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/anj/agent-skills-manager/internal/knownsource"
 )
 
 // UpdateOptions controls ApplyUpdates.
@@ -25,13 +27,15 @@ type UpdateOptions struct {
 	// RunCmd runs external commands; nil uses a real exec with timeout.
 	// dir is working directory ("" = process cwd).
 	RunCmd func(dir, name string, args ...string) (combinedOut string, err error)
+	// LookPath finds a binary on PATH; nil uses exec.LookPath (injectable for tests).
+	LookPath func(file string) (string, error)
 }
 
 // UpdateItem is one attempted update.
 type UpdateItem struct {
 	Name       string     `json:"name"`
 	Provenance Provenance `json:"provenance"`
-	Action     string     `json:"action"` // npx-skills | dws | git-pull | skip
+	Action     string     `json:"action"` // npx-skills | known/cli id | git-pull | skip
 	OK         bool       `json:"ok"`
 	Skipped    bool       `json:"skipped,omitempty"`
 	Message    string     `json:"message,omitempty"`
@@ -48,7 +52,7 @@ type UpdateResult struct {
 // ApplyUpdates tries to refresh skills that are StatusOutdated.
 //
 //	skill-lock → npx skills update <names...> -g -y
-//	known dws  → dws skill setup mono (fallback dws upgrade -y)
+//	known      → knownsource.Catalog[name].Update steps (e.g. dws CLI)
 //	git        → git -C <path> pull --ff-only
 //	deleted upstream / unknown → skip with message
 func ApplyUpdates(report *Result, opt UpdateOptions) *UpdateResult {
@@ -60,6 +64,9 @@ func ApplyUpdates(report *Result, opt UpdateOptions) *UpdateResult {
 	}
 	if opt.RunCmd == nil {
 		opt.RunCmd = defaultRunCmd
+	}
+	if opt.LookPath == nil {
+		opt.LookPath = exec.LookPath
 	}
 
 	out := &UpdateResult{}
@@ -105,7 +112,9 @@ func ApplyUpdates(report *Result, opt UpdateOptions) *UpdateResult {
 		lockSeen  = map[string]bool{}
 		gitOnes   []Entry
 		gitSeen   = map[string]bool{}
-		dwsOnce   *Entry // at most one dws skill-setup for the whole machine
+		// known updates keyed by catalog name; value is first entry for reporting
+		knownOnes []knownUpdateJob
+		knownSeen = map[string]bool{}
 		skips     []Entry
 	)
 	for _, e := range targets {
@@ -125,10 +134,22 @@ func ApplyUpdates(report *Result, opt UpdateOptions) *UpdateResult {
 			}
 			gitSeen[key] = true
 			gitOnes = append(gitOnes, e)
-		case e.Provenance == ProvKnown && isDWS(e):
-			if dwsOnce == nil {
-				cp := e
-				dwsOnce = &cp
+		case e.Provenance == ProvKnown:
+			src, ok := knownsource.Lookup(e.Name)
+			if !ok || src.Update == nil || len(src.Update.Steps) == 0 {
+				skips = append(skips, e)
+				continue
+			}
+			// OncePerMachine (default for multi-home installers): one run per catalog name
+			once := src.Update.OncePerMachine
+			if once && knownSeen[key] {
+				continue
+			}
+			if !knownSeen[key] {
+				knownSeen[key] = true
+				knownOnes = append(knownOnes, knownUpdateJob{Entry: e, Source: src})
+			} else if !once {
+				knownOnes = append(knownOnes, knownUpdateJob{Entry: e, Source: src})
 			}
 		default:
 			skips = append(skips, e)
@@ -141,8 +162,8 @@ func ApplyUpdates(report *Result, opt UpdateOptions) *UpdateResult {
 	for _, e := range gitOnes {
 		out.Items = append(out.Items, updateGit(e, opt))
 	}
-	if dwsOnce != nil {
-		out.Items = append(out.Items, updateDWS(*dwsOnce, opt))
+	for _, job := range knownOnes {
+		out.Items = append(out.Items, updateKnown(job.Entry, job.Source, opt))
 	}
 	for _, e := range skips {
 		msg := e.Message
@@ -170,20 +191,16 @@ func ApplyUpdates(report *Result, opt UpdateOptions) *UpdateResult {
 	return out
 }
 
+type knownUpdateJob struct {
+	Entry  Entry
+	Source knownsource.Source
+}
+
 func isDeletedUpstream(e Entry) bool {
 	m := strings.ToLower(e.Message)
 	return strings.Contains(m, "upstream path missing") ||
 		strings.Contains(m, "deleted or renamed") ||
 		strings.Contains(m, "appear to have been deleted")
-}
-
-func isDWS(e Entry) bool {
-	if strings.EqualFold(e.Name, "dws") {
-		return true
-	}
-	r := strings.ToLower(e.Remote + " " + e.Message)
-	return strings.Contains(r, "dingtalk-workspace-cli") ||
-		strings.Contains(r, "dingtalk-real-ai")
 }
 
 func updateSkillLockBatch(names []string, opt UpdateOptions) []UpdateItem {
@@ -237,29 +254,59 @@ func updateGit(e Entry, opt UpdateOptions) UpdateItem {
 	return it
 }
 
-func updateDWS(e Entry, opt UpdateOptions) UpdateItem {
-	it := UpdateItem{Name: e.Name, Provenance: ProvKnown, Action: "dws"}
-	if _, err := exec.LookPath("dws"); err != nil {
-		it.OK = false
+// updateKnown runs Catalog UpdateSpec steps (generic; dws is just one catalog entry).
+func updateKnown(e Entry, src knownsource.Source, opt UpdateOptions) UpdateItem {
+	spec := src.Update
+	it := UpdateItem{
+		Name:       e.Name,
+		Provenance: ProvKnown,
+		Action:     src.ActionID(),
+	}
+	if spec == nil || len(spec.Steps) == 0 {
 		it.Skipped = true
-		it.Message = "未找到 dws 命令。可: curl -fsSL https://raw.githubusercontent.com/DingTalk-Real-AI/dingtalk-workspace-cli/main/scripts/install-skills.sh | DWS_SKILLS_ROOT=$HOME sh"
+		it.Message = "known source has no UpdateSpec"
 		return it
 	}
-	// 1) upgrade CLI (pulls matching skill packages from GitHub Releases)
-	fmt.Fprintln(opt.Stdout, "→ dws upgrade -y")
-	if _, err := opt.RunCmd("", "dws", "upgrade", "-y"); err != nil {
-		// still try skill setup from current embed
-		fmt.Fprintln(opt.Stdout, "  upgrade 失败，继续 skill setup:", err)
+
+	if bin := strings.TrimSpace(spec.RequiresBin); bin != "" {
+		if _, err := opt.LookPath(bin); err != nil {
+			it.OK = false
+			it.Skipped = true
+			msg := "未找到 " + bin + " 命令"
+			if h := strings.TrimSpace(spec.InstallHint); h != "" {
+				msg += "。可: " + h
+			}
+			it.Message = msg
+			return it
+		}
 	}
-	// 2) re-emit mono skill once to all agent homes (single run)
-	fmt.Fprintln(opt.Stdout, "→ dws skill setup --mode mono --target all --yes")
-	if _, err := opt.RunCmd("", "dws", "skill", "setup", "--mode", "mono", "--target", "all", "--yes"); err != nil {
-		it.OK = false
-		it.Message = err.Error()
-		return it
+
+	for _, step := range spec.Steps {
+		if len(step.Argv) == 0 {
+			continue
+		}
+		label := step.Label
+		if label == "" {
+			label = strings.Join(step.Argv, " ")
+		}
+		fmt.Fprintln(opt.Stdout, "→", label)
+		_, err := opt.RunCmd("", step.Argv[0], step.Argv[1:]...)
+		if err != nil {
+			if step.ContinueOnError {
+				fmt.Fprintln(opt.Stdout, "  步骤失败，继续:", err)
+				continue
+			}
+			it.OK = false
+			it.Message = err.Error()
+			return it
+		}
 	}
+
 	it.OK = true
-	it.Message = "dws upgrade -y + skill setup mono (once; compare uses latest release not main HEAD)"
+	it.Message = spec.SuccessMessage
+	if it.Message == "" {
+		it.Message = "known source update ok (" + src.OwnerRepo + ")"
+	}
 	return it
 }
 

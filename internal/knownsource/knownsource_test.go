@@ -45,3 +45,25 @@ func TestGitBlobSHA1(t *testing.T) {
 		t.Fatalf("got %s want %s", got, want)
 	}
 }
+
+func TestLookupDWSHasUpdateSpec(t *testing.T) {
+	s, ok := Lookup("dws")
+	if !ok {
+		t.Fatal("Lookup dws")
+	}
+	if s.Update == nil || len(s.Update.Steps) < 2 {
+		t.Fatalf("Update=%+v", s.Update)
+	}
+	if !s.Update.OncePerMachine {
+		t.Fatal("OncePerMachine expected")
+	}
+	if s.OutdatedHint() == "" || s.ActionID() != "dws" {
+		t.Fatalf("hint=%q action=%q", s.OutdatedHint(), s.ActionID())
+	}
+}
+
+func TestLookupMissing(t *testing.T) {
+	if _, ok := Lookup("no-such-skill"); ok {
+		t.Fatal("expected miss")
+	}
+}
