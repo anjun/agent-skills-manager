@@ -11,13 +11,31 @@
 
 ## 安装
 
+**从 Release 安装（macOS Apple Silicon）：**
+
+```bash
+# 推荐下 .tar.gz（里面是可执行的 asm）
+tar -xzf agent-skills-manager-darwin-arm64.tar.gz
+mkdir -p ~/bin && mv asm ~/bin/
+export PATH="$HOME/bin:$PATH"
+asm version
+```
+
+若下载的是无扩展名裸文件 `agent-skills-manager-darwin-arm64`，浏览器会去掉可执行位，Finder 显示成 Document，需：
+
+```bash
+chmod +x agent-skills-manager-darwin-arm64
+xattr -d com.apple.quarantine agent-skills-manager-darwin-arm64 2>/dev/null || true
+mv agent-skills-manager-darwin-arm64 ~/bin/asm
+```
+
+**从源码安装：**
+
 ```bash
 go build -o bin/agent-skills-manager ./cmd/agent-skills-manager
 ln -sf agent-skills-manager bin/asm
 ./bin/asm version
-
-# 可选：放入 PATH
-cp bin/agent-skills-manager bin/asm ~/bin/
+# 可选：cp bin/asm ~/bin/
 ```
 
 ## 自更新（GitHub Releases）
@@ -33,16 +51,17 @@ asm upgrade -y          # 跳过确认
 
 ## 发版（GitHub Actions）
 
-`dist/` 是本地/CI 构建产物，**不要提交**（已在 `.gitignore`）。
+| 触发 | 做什么 | 会发版吗？ |
+|------|--------|------------|
+| push `main` | **CI**：只 `go test` | ❌ 不打包、不发 Release |
+| `make release VERSION=x.y.z` / 推 `v*` tag | **Release**：多平台构建 + 上传 | ✅ |
 
-**本地一键打 tag 并推送（推荐）：**
+`dist/` 仅 CI 产物，**不要提交**。
 
 ```bash
-make release VERSION=0.3.2   # 打印变更摘要 → 打 v0.3.2 → push → 触发 CI 发版
-make summary                 # 只看相对上一正式 tag 的变更
+make release VERSION=0.3.2   # 变更摘要 → 打 tag → push → 触发发版
+make summary
 ```
-
-**或在 GitHub 上手动：** Actions → **Release** → Run workflow，填版本号。
 
 ## 自测
 

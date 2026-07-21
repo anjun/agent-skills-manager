@@ -93,6 +93,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
+          # raw binary names stay for `asm upgrade`; tar.gz is for human install (preserves +x)
           targets=(
             "darwin amd64"
             "darwin arm64"
@@ -113,6 +114,16 @@ jobs:
               -ldflags "-s -w -X main.version=${VERSION}" \
               -o "dist/${out}" \
               ./cmd/agent-skills-manager
+            chmod +x "dist/${out}"
+
+            # Human-friendly archive: extract → ./asm (mode 755 preserved)
+            if [ "$goos" != "windows" ]; then
+              stage="$(mktemp -d)"
+              cp "dist/${out}" "${stage}/asm"
+              chmod 755 "${stage}/asm"
+              tar -C "${stage}" -czf "dist/${out}.tar.gz" asm
+              rm -rf "${stage}"
+            fi
           done
           (cd dist && shasum -a 256 * > checksums.txt)
           ls -la dist
@@ -124,11 +135,33 @@ jobs:
           name: ${{ steps.ver.outputs.tag }}
           generate_release_notes: true
           prerelease: ${{ steps.ver.outputs.prerelease == 'true' }}
+          body: |
+            ## 安装（macOS Apple Silicon 示例）
+
+            **推荐：下载 `.tar.gz`（保留可执行权限）**
+            ```bash
+            tar -xzf agent-skills-manager-darwin-arm64.tar.gz
+            sudo mv asm /usr/local/bin/asm   # 或: mkdir -p ~/bin && mv asm ~/bin/
+            asm version
+            ```
+
+            **若下载的是无扩展名裸二进制**（浏览器常丢掉 +x，Finder 会显示成 Document）：
+            ```bash
+            chmod +x agent-skills-manager-darwin-arm64
+            xattr -d com.apple.quarantine agent-skills-manager-darwin-arm64 2>/dev/null || true
+            mv agent-skills-manager-darwin-arm64 ~/bin/asm
+            ```
+
+            已安装过可用：`asm upgrade`
           files: |
             dist/agent-skills-manager-darwin-amd64
+            dist/agent-skills-manager-darwin-amd64.tar.gz
             dist/agent-skills-manager-darwin-arm64
+            dist/agent-skills-manager-darwin-arm64.tar.gz
             dist/agent-skills-manager-linux-amd64
+            dist/agent-skills-manager-linux-amd64.tar.gz
             dist/agent-skills-manager-linux-arm64
+            dist/agent-skills-manager-linux-arm64.tar.gz
             dist/agent-skills-manager-windows-amd64.exe
             dist/checksums.txt
         env:

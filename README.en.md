@@ -11,6 +11,25 @@ Discover skills on tool and project roots, classify them, unify under `~/.agents
 
 ## Install
 
+**From Release (macOS Apple Silicon):**
+
+```bash
+tar -xzf agent-skills-manager-darwin-arm64.tar.gz
+mkdir -p ~/bin && mv asm ~/bin/
+export PATH="$HOME/bin:$PATH"
+asm version
+```
+
+Bare binary downloads often lose `+x` (Finder shows “Document”); then:
+
+```bash
+chmod +x agent-skills-manager-darwin-arm64
+xattr -d com.apple.quarantine agent-skills-manager-darwin-arm64 2>/dev/null || true
+mv agent-skills-manager-darwin-arm64 ~/bin/asm
+```
+
+**From source:**
+
 ```bash
 go build -o bin/agent-skills-manager ./cmd/agent-skills-manager
 ln -sf agent-skills-manager bin/asm
@@ -30,16 +49,15 @@ Private repos need `GITHUB_TOKEN` / `GH_TOKEN` or `gh auth login`.
 
 ## Releasing (GitHub Actions)
 
-`dist/` is a build artifact — **do not commit** (gitignored).
-
-**Local one-liner (recommended):**
+| Trigger | What runs | Release? |
+|---------|-----------|----------|
+| push `main` | **CI**: `go test` only | no |
+| `make release VERSION=x.y.z` / push `v*` tag | **Release**: multi-arch build + upload | yes |
 
 ```bash
-make release VERSION=0.3.2   # changelog summary → tag v0.3.2 → push → CI release
-make summary                 # commits since last stable tag
+make release VERSION=0.3.2
+make summary
 ```
-
-**Or:** GitHub → Actions → **Release** → Run workflow with a version.
 
 ## Self-test
 

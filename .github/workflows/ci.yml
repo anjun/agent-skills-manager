@@ -16,8 +16,6 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # 仅测试，不打包、不发 Release。发版只由 Release workflow（tag / make release）触发。
       - name: Test
         run: go test ./...
-
-      - name: Build
-        run: go build -o /tmp/asm ./cmd/agent-skills-manager
