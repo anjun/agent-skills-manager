@@ -60,11 +60,23 @@ push `main` 只跑测试，**不发版**。
 asm scan
 asm plan
 asm apply
-asm outdated
+asm outdated                      # 检查 skill 是否有上游更新
+asm outdated --update             # 检查并尝试自动更新
+asm outdated --update -y          # 更新时跳过确认
+asm outdated --update dws         # 只更新指定 skill
 asm doctor
-asm upgrade --check
+asm upgrade --check               # 更新 asm 自身
 asm undo last
 ```
+
+### `outdated --update` 会做什么
+
+| 来源 | 动作 |
+|------|------|
+| skill-lock（npx skills） | `npx skills update <names> -g -y` |
+| known（dws） | `dws skill setup --mode mono --target all --yes`（失败则 `dws upgrade -y`） |
+| git skill 目录 | `git pull --ff-only` |
+| 上游已删除 / 无路径 | 跳过并提示 |
 
 ## 许可证
 

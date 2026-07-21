@@ -100,7 +100,7 @@ var zh = map[string]string{
 
 	"main.unknown_cmd":        "未知命令: %s\n",
 	"main.error_prefix":       "错误:",
-	"outdated.title":          "Skill 更新检查（只读，不写盘）",
+	"outdated.title":          "Skill 更新检查",
 	"outdated.col_status":     "状态",
 	"outdated.col_name":       "名称",
 	"outdated.col_prov":       "来源类型",
@@ -113,7 +113,25 @@ var zh = map[string]string{
 	"outdated.status_error":    "错误",
 	"outdated.status_skipped":  "跳过",
 	"outdated.summary":         "\n汇总：可更新=%d  已最新=%d  未知=%d  错误=%d  合计=%d",
-	"outdated.note":            "仅检查、不自动拉取。优先：skill 自有 git；其次 ~/.agents/.skill-lock.json（npx skills）对比 GitHub folder hash；手动 skill 无来源则 unknown。更新请用 npx skills update。",
+	"outdated.note":            "默认只检查。加 --update 可尝试自动更新：skill-lock→npx skills；dws→dws skill setup；git skill→git pull。",
+	"outdated.update_begin":    "\n── 自动更新 ──",
+	"outdated.update_summary":  "\n更新结果：成功=%d  跳过=%d  失败=%d",
+	"outdated.help": `asm outdated — 检查（并可选更新）可溯源 skill
+
+用法:
+  asm outdated [--all] [--update|-u] [-y] [name ...]
+
+  --all       列出 unknown
+  --update    检查后尝试更新 Status=outdated 的 skill
+  -y          更新时跳过确认
+  name        只更新指定 skill（可多个）
+
+更新路由:
+  skill-lock  → npx skills update … -g -y
+  dws         → dws skill setup --mode mono --target all --yes
+  git skill   → git pull --ff-only
+  上游已删    → 跳过
+`,
 	"upgrade.current":          "asm 已是最新版本 %s",
 	"upgrade.available":        "发现新版本：%s → %s\n  资源：%s\n  仓库：%s",
 	"upgrade.confirm":          "是否下载并替换当前二进制？[y/N] ",
@@ -132,12 +150,13 @@ var zh = map[string]string{
   apply                 执行迁移与符号链接
   undo [id|last]        回滚
   doctor                健康检查
-  outdated              检查可溯源 skill 是否有更新（只读）
+  outdated [--update]   检查 skill 更新；--update 尝试自动更新
   upgrade [--check]     从 GitHub Releases 更新 asm 自身
 
 参数：
   --json                机器可读 JSON（字段仍为英文）
   --all                 scan 时列出全部内置/市场 skill
+  --update, -u          outdated：检查后更新可更新的 skill
   --yes, -y             跳过确认（非 TTY 必须）
   --strategy <name>     非交互冲突策略
   --only / --exclude    限制工具
@@ -244,7 +263,7 @@ var en = map[string]string{
 
 	"main.unknown_cmd":  "unknown command: %s\n",
 	"main.error_prefix": "error:",
-	"outdated.title":    "Skill update check (read-only, no writes)",
+	"outdated.title":    "Skill update check",
 	"outdated.col_status": "STATUS",
 	"outdated.col_name":   "NAME",
 	"outdated.col_prov":   "PROVENANCE",
@@ -257,7 +276,25 @@ var en = map[string]string{
 	"outdated.status_error":    "error",
 	"outdated.status_skipped":  "skipped",
 	"outdated.summary": "\nSummary: outdated=%d  current=%d  unknown=%d  error=%d  total=%d",
-	"outdated.note":    "Check-only (no pull). Order: skill-dir git origin; then ~/.agents/.skill-lock.json (npx skills) GitHub folder hash; manual installs without lock stay unknown. Update via npx skills update.",
+	"outdated.note":    "Check-only by default. Pass --update to refresh: skill-lock→npx skills; dws→dws skill setup; git skill→git pull.",
+	"outdated.update_begin":   "\n── auto-update ──",
+	"outdated.update_summary": "\nUpdate result: ok=%d  skipped=%d  failed=%d",
+	"outdated.help": `asm outdated — check (and optionally update) skills with provenance
+
+Usage:
+  asm outdated [--all] [--update|-u] [-y] [name ...]
+
+  --all       list unknown
+  --update    after check, try to update Status=outdated skills
+  -y          skip confirmation
+  name        only update these skills
+
+Routes:
+  skill-lock  → npx skills update … -g -y
+  dws         → dws skill setup --mode mono --target all --yes
+  git skill   → git pull --ff-only
+  deleted     → skip
+`,
 	"upgrade.current":   "asm is up to date (%s)",
 	"upgrade.available": "update available: %s → %s\n  asset: %s\n  repo: %s",
 	"upgrade.confirm":   "Download and replace the current binary? [y/N] ",
@@ -276,11 +313,11 @@ Commands:
   apply                 migrate + symlink
   undo [id|last]        rollback
   doctor                health check
-  outdated              check skills with provenance for updates (read-only)
+  outdated [--update]   check skill updates; --update applies where possible
   upgrade [--check]     self-update from GitHub Releases
 
 Flags:
-  --json / --all / --yes / --strategy / --only / --exclude
+  --json / --all / --update|-u / --yes / --strategy / --only / --exclude
   --extra-root / --project-root / --no-project / --no-probe
   --lang zh|en  (env ASM_LANG)  --zh / --en
 

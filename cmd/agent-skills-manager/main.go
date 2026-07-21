@@ -68,7 +68,7 @@ func main() {
 	case "doctor":
 		runDoctor(cfg, vl)
 	case "outdated", "check-update", "check-updates":
-		runOutdated(cfg, vl)
+		runOutdated(cfg, vl, args)
 	case "upgrade", "self-update", "selfupdate":
 		runUpgrade(cfg, args)
 	default:
@@ -363,25 +363,47 @@ func runDoctor(cfg *config.Config, vl *vendorlist.List) {
 	fmt.Println()
 }
 
-func runOutdated(cfg *config.Config, vl *vendorlist.List) {
+func runOutdated(cfg *config.Config, vl *vendorlist.List, args []string) {
 	tr := cfg.T()
+	doUpdate := false
+	var names []string
+	for _, a := range args {
+		switch a {
+		case "--update", "--fix", "-u":
+			doUpdate = true
+		case "--yes", "-y":
+			cfg.Yes = true
+		case "--all":
+			cfg.ShowAll = true
+		case "--help", "-h":
+			fmt.Print(tr.S("outdated.help"))
+			return
+		default:
+			if strings.HasPrefix(a, "-") {
+				fail(cfg, fmt.Errorf("unknown outdated flag: %s (use --update / -u / -y / --all)", a))
+			}
+			names = append(names, a)
+		}
+	}
+
 	res, err := outdated.Run(cfg, vl)
 	if err != nil {
 		fail(cfg, err)
 	}
-	if cfg.JSON {
+
+	if cfg.JSON && !doUpdate {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		_ = enc.Encode(res)
 		return
 	}
+
 	fmt.Println(tr.S("outdated.title"))
 	w := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
 	fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
 		tr.S("outdated.col_status"), tr.S("outdated.col_name"), tr.S("outdated.col_prov"),
 		tr.S("outdated.col_local"), tr.S("outdated.col_remote"), tr.S("outdated.col_msg"))
 	for _, e := range res.Entries {
-		// hide pure unknown noise unless --all
 		if e.Status == outdated.StatusUnknown && !cfg.ShowAll {
 			continue
 		}
@@ -395,7 +417,33 @@ func runOutdated(cfg *config.Config, vl *vendorlist.List) {
 	if !cfg.ShowAll && res.Summary.Unknown > 0 {
 		fmt.Printf("  (%d unknown hidden; pass --all to list)\n", res.Summary.Unknown)
 	}
-	fmt.Println(tr.S("outdated.note"))
+
+	if !doUpdate {
+		fmt.Println(tr.S("outdated.note"))
+		return
+	}
+
+	fmt.Println(tr.S("outdated.update_begin"))
+	ur := outdated.ApplyUpdates(res, outdated.UpdateOptions{
+		Yes:   cfg.Yes,
+		Names: names,
+	})
+	if cfg.JSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(map[string]any{"check": res, "update": ur})
+		return
+	}
+	for _, it := range ur.Items {
+		mark := "ok"
+		if it.Skipped {
+			mark = "skip"
+		} else if !it.OK {
+			mark = "fail"
+		}
+		fmt.Printf("  [%s] %s (%s): %s\n", mark, it.Name, it.Action, it.Message)
+	}
+	fmt.Println(tr.S("outdated.update_summary", ur.Updated, ur.Skipped, ur.Failed))
 }
 
 func statusLabel(tr *i18n.T, s outdated.Status) string {

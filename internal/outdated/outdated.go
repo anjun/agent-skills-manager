@@ -1,5 +1,5 @@
 // Package outdated checks whether skills with known provenance have upstream updates.
-// Check-only (no apply / no git pull / no lock rewrite).
+// Optional ApplyUpdates (--update) can refresh skill-lock / dws / git skills.
 package outdated
 
 import (
