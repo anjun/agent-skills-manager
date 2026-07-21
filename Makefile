@@ -1,20 +1,22 @@
 # agent-skills-manager (asm)
 #
 # Usage:
-#   make release VERSION=0.3.2   # 总结变更 → 打 tag → push（触发 GitHub Actions 发版）
-#   make release VERSION=v0.3.2
-#   make summary                # 仅打印相对上一 tag 的变更摘要
-#   make tags                   # 列出本地 tag
-#   make test / make build
+#   make release                 # 自动 patch 升版 → 总结 → 打 tag → push（触发 CI 发版）
+#   make release BUMP=minor      # minor / major / patch（默认 patch）
+#   make release VERSION=0.3.2   # 显式指定版本
+#   make summary / make tags / make test / make build
 
-.PHONY: help test build summary tags release check-version check-clean
+.PHONY: help test build summary tags release resolve-version check-clean next-version
 
 VERSION ?=
-TAG     = v$(patsubst v%,%,$(VERSION))
+BUMP    ?= patch
+TAG      =
 
 help:
 	@echo "Targets:"
-	@echo "  make release VERSION=x.y.z   总结 git 变更、打 tag、push（触发 CI 发版）"
+	@echo "  make release                 自动升版(默认 patch) + 打 tag + push → CI 发版"
+	@echo "  make release BUMP=minor      升 minor / major / patch"
+	@echo "  make release VERSION=x.y.z   指定版本（不自动 bump）"
 	@echo "  make summary                 相对上一正式 tag 的 commit 摘要"
 	@echo "  make tags                    列出 tag"
 	@echo "  make test / make build"
@@ -58,18 +60,37 @@ summary:
 tags:
 	@git tag -l 'v*' --sort=-v:refname | head -20
 
-check-version:
-	@if [ -z "$(VERSION)" ]; then \
-		echo "错误: 请指定 VERSION，例如: make release VERSION=0.3.2" >&2; \
-		exit 2; \
-	fi
-	@echo "$(VERSION)" | grep -Eq '^[vV]?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$$' || { \
-		echo "错误: VERSION 格式应为 x.y.z 或 vX.Y.Z（可选 pre 后缀）" >&2; \
-		exit 2; \
-	}
+# 计算下一版本：VERSION 优先，否则按 BUMP 从 LAST_TAG 递增
+resolve-version:
+	@set -e; \
+	if [ -n "$(VERSION)" ]; then \
+		RAW="$(VERSION)"; \
+		RAW="$${RAW#v}"; \
+		RAW="$${RAW#V}"; \
+	else \
+		BASE="$(LAST_TAG)"; \
+		if [ -z "$$BASE" ]; then BASE="v0.0.0"; fi; \
+		BASE="$${BASE#v}"; \
+		maj=$${BASE%%.*}; rest=$${BASE#*.}; \
+		min=$${rest%%.*}; pat=$${rest#*.}; \
+		pat=$${pat%%-*}; \
+		case "$(BUMP)" in \
+			major) maj=$$((maj+1)); min=0; pat=0 ;; \
+			minor) min=$$((min+1)); pat=0 ;; \
+			patch|"") pat=$$((pat+1)) ;; \
+			*) echo "错误: BUMP 应为 major|minor|patch，收到: $(BUMP)" >&2; exit 2 ;; \
+		esac; \
+		RAW="$$maj.$$min.$$pat"; \
+		echo "未指定 VERSION，按 BUMP=$(BUMP) 自动升版: $${BASE:-0.0.0} → $$RAW"; \
+	fi; \
+	echo "$$RAW" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$$' || { \
+		echo "错误: 版本格式应为 x.y.z，得到: $$RAW" >&2; exit 2; \
+	}; \
+	echo "$$RAW" > .release-version
+	@echo "→ 将发布: v$$(cat .release-version)"
 
 check-clean:
-	@if [ -n "$$(git status --porcelain)" ]; then \
+	@if [ -n "$$(git status --porcelain | grep -v '^.release-version$$' || true)" ]; then \
 		echo "错误: 工作区不干净，请先 commit 或 stash" >&2; \
 		git status -sb; \
 		exit 1; \
@@ -79,22 +100,29 @@ check-clean:
 		echo "警告: 当前分支是 $$branch（通常应在 main 上打 tag）" >&2; \
 	fi
 
-# 一键：总结 → 打 tag → push tag（及当前分支）→ CI Release 自动构建上传
-release: check-version check-clean summary
-	@if git rev-parse "$(TAG)" >/dev/null 2>&1; then \
-		echo "错误: tag $(TAG) 已存在" >&2; \
+# 一键：解析版本 → 总结 → 打 tag → push → CI Release
+release: resolve-version check-clean summary
+	@RAW=$$(cat .release-version); TAG="v$$RAW"; rm -f .release-version; \
+	if git rev-parse "$$TAG" >/dev/null 2>&1; then \
+		echo "错误: tag $$TAG 已存在" >&2; \
 		exit 1; \
-	fi
-	@echo ""
-	@echo "将创建并推送: $(TAG)"
-	@printf "确认? [y/N] "; read ans; \
-	case "$$ans" in y|Y|yes|YES) ;; *) echo "已取消"; exit 1 ;; esac
-	@git tag -a "$(TAG)" -m "Release $(TAG)"
-	@echo "→ 推送分支 $$(git rev-parse --abbrev-ref HEAD) …"
-	@git push origin "$$(git rev-parse --abbrev-ref HEAD)"
-	@echo "→ 推送 tag $(TAG) …"
-	@git push origin "$(TAG)"
-	@echo ""
-	@echo "完成。GitHub Actions Release 将构建并上传二进制:"
-	@echo "  https://github.com/$$(git remote get-url origin | sed -E 's#.*github.com[:/](.+)(\.git)?#\1#' | sed 's/\.git$$//')/actions"
-	@echo "  make 不负责本地编译 dist/；发版由 CI 完成。"
+	fi; \
+	if [ -z "$$(git log $$(git tag -l 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$$' | head -1)..HEAD --oneline 2>/dev/null)" ] \
+	   && [ -n "$$(git tag -l 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$$' | head -1)" ]; then \
+		echo "警告: 自上一正式 tag 以来没有新 commit" >&2; \
+	fi; \
+	echo ""; \
+	echo "将创建并推送: $$TAG"; \
+	printf "确认? [y/N] "; read ans; \
+	case "$$ans" in y|Y|yes|YES) ;; *) echo "已取消"; exit 1 ;; esac; \
+	git tag -a "$$TAG" -m "Release $$TAG"; \
+	echo "→ 推送分支 $$(git rev-parse --abbrev-ref HEAD) …"; \
+	git push origin "$$(git rev-parse --abbrev-ref HEAD)"; \
+	echo "→ 推送 tag $$TAG …"; \
+	git push origin "$$TAG"; \
+	echo ""; \
+	echo "完成。GitHub Actions Release 将构建并上传二进制:"; \
+	repo=$$(git remote get-url origin | sed -E 's#.*github.com[:/](.+)$$#\1#' | sed 's/\.git$$//'); \
+	echo "  https://github.com/$$repo/actions"; \
+	echo "  https://github.com/$$repo/releases/tag/$$TAG"; \
+	echo "  make 不负责本地编译 dist/；发版由 CI 完成。"

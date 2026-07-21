@@ -55,7 +55,9 @@ Private repos need `GITHUB_TOKEN` / `GH_TOKEN` or `gh auth login`.
 | `make release VERSION=x.y.z` / push `v*` tag | **Release**: multi-arch build + upload | yes |
 
 ```bash
-make release VERSION=0.3.2
+make release                 # auto patch bump → tag → push → CI release
+make release BUMP=minor
+make release VERSION=0.4.0   # explicit version
 make summary
 ```
 

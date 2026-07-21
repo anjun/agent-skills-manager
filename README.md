@@ -59,7 +59,9 @@ asm upgrade -y          # 跳过确认
 `dist/` 仅 CI 产物，**不要提交**。
 
 ```bash
-make release VERSION=0.3.2   # 变更摘要 → 打 tag → push → 触发发版
+make release                 # 自动 patch 升版 → 摘要 → 打 tag → push → CI 发版
+make release BUMP=minor      # 升 minor（也可用 major）
+make release VERSION=0.4.0   # 显式指定版本
 make summary
 ```
 
