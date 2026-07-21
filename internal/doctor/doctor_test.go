@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/anj/agent-skills-manager/internal/config"
+	"github.com/anj/agent-skills-manager/internal/i18n"
 	"github.com/anj/agent-skills-manager/internal/vendorlist"
 )
 
@@ -15,12 +16,16 @@ func TestLocalProvenanceHintManual(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: solo\n---\n# x\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	hint := localProvenanceHint("solo", dir, nil)
-	if hint == "" || !strings.Contains(hint, "provenance") && !strings.Contains(hint, "手工") {
-		// Chinese default in production; tests may use default lang from env
-		if !strings.Contains(hint, "asm remove") {
-			t.Fatalf("hint=%q", hint)
-		}
+	zh := localProvenanceHint(i18n.New(i18n.ZH), "solo", dir, nil)
+	en := localProvenanceHint(i18n.New(i18n.EN), "solo", dir, nil)
+	if !strings.Contains(zh, "asm remove") || !strings.Contains(zh, "手工") {
+		t.Fatalf("zh hint=%q", zh)
+	}
+	if !strings.Contains(en, "no provenance") || !strings.Contains(en, "asm remove") {
+		t.Fatalf("en hint=%q", en)
+	}
+	if zh == en {
+		t.Fatal("zh and en should differ")
 	}
 }
 
@@ -29,7 +34,7 @@ func TestLocalProvenanceHintKnownEmpty(t *testing.T) {
 	dir := t.TempDir()
 	_ = os.WriteFile(filepath.Join(dir, "NOTICE"), []byte("DingTalk Workspace CLI\n"), 0o644)
 	_ = os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: dws\n---\n"), 0o644)
-	if got := localProvenanceHint("dws", dir, nil); got != "" {
+	if got := localProvenanceHint(i18n.New(i18n.EN), "dws", dir, nil); got != "" {
 		t.Fatalf("want empty for known dws, got %q", got)
 	}
 }

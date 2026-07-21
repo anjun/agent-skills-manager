@@ -8,6 +8,7 @@ import (
 
 	"github.com/anj/agent-skills-manager/internal/config"
 	"github.com/anj/agent-skills-manager/internal/fsutil"
+	"github.com/anj/agent-skills-manager/internal/i18n"
 	"github.com/anj/agent-skills-manager/internal/knownsource"
 	"github.com/anj/agent-skills-manager/internal/roots"
 	"github.com/anj/agent-skills-manager/internal/scan"
@@ -147,7 +148,7 @@ func Run(cfg *config.Config, vl *vendorlist.List) ([]Issue, error) {
 		}
 		seenPath[contentPath] = true
 
-		hint := localProvenanceHint(e.Name, contentPath, lockIdx)
+		hint := localProvenanceHint(tr, e.Name, contentPath, lockIdx)
 		if hint == "" {
 			continue
 		}
@@ -160,7 +161,10 @@ func Run(cfg *config.Config, vl *vendorlist.List) ([]Issue, error) {
 
 // localProvenanceHint returns an actionable message when updates cannot be checked.
 // Empty string means provenance is OK for outdated (git / skill-lock / known).
-func localProvenanceHint(name, contentPath string, lockIdx *skilllock.Index) string {
+func localProvenanceHint(tr *i18n.T, name, contentPath string, lockIdx *skilllock.Index) string {
+	if tr == nil {
+		tr = i18n.New(i18n.ZH)
+	}
 	contentPath = fsutil.Abs(contentPath)
 	// git skill root
 	if root, ok := fsutil.GitWorkTreeRoot(contentPath); ok && root == contentPath {
@@ -181,19 +185,14 @@ func localProvenanceHint(name, contentPath string, lockIdx *skilllock.Index) str
 	if sk, err := skill.Load(contentPath); err == nil && sk != nil {
 		src := frontmatterSource(sk)
 		if src != "" {
-			return "SKILL.md 声明了 source（" + src + "）但不在 skill-lock 中，无法对比上游。" +
-				" 建议：用 npx skills add 安装以写入 lock，或把目录保持为独立 git 仓。" +
-				" 不需要则: asm remove " + name
+			return tr.S("doctor.prov_source", src, name)
 		}
 		if ver, ok := sk.Frontmatter["version"].(string); ok && strings.TrimSpace(ver) != "" {
-			return "仅有 frontmatter version（" + strings.TrimSpace(ver) + "），无上游 URL，无法检查更新。" +
-				" 建议补充 git remote / skill-lock，或不需要则: asm remove " + name
+			return tr.S("doctor.prov_version", strings.TrimSpace(ver), name)
 		}
 	}
 
-	return "无 provenance（手工安装）。无法用 asm outdated 检查更新。" +
-		" 可选：npx skills add … -g（写 skill-lock）、git clone 到技能目录、" +
-		"或 CLI 安装器技能加入 knownsource.Catalog。清理: asm remove " + name
+	return tr.S("doctor.prov_none", name)
 }
 
 func frontmatterSource(sk *skill.Skill) string {

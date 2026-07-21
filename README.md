@@ -97,6 +97,18 @@ asm gates                         # 列出关闭状态
 
 仓库自维护但无 skill-lock / 非 git 的 skill：在 `internal/knownsource` 增加 Catalog 条目（指纹 + 上游路径 + 更新命令）即可接入检查与 `--update`。
 
+### 启用 / 关闭 skill（gates）
+
+| 模式 | 效果 |
+|------|------|
+| **全局关** | 拆掉各工具链接；真源挪到 `~/.local/state/agent-skills-manager/disabled-skills/<name>` |
+| **按工具关** | 只删该工具下的符号链接（如 `~/.codex/skills/<name>`）；真源仍在 agents |
+| **plan / sync / apply** | 读取 `skill-gates.json`，**不会**把已关闭的 skill 重新接线 |
+
+状态文件：`~/.local/state/agent-skills-manager/skill-gates.json`
+
+界面语言默认中文；可用 `--en` / `--zh` 或环境变量 `ASM_LANG=en`。
+
 ## 许可证
 
 MIT

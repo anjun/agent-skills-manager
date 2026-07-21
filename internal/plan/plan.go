@@ -73,6 +73,7 @@ func Build(cfg *config.Config, res *scan.Result) *Plan {
 	names := sortedKeys(byName)
 	wireRoots := roots.WireRoots(cfg)
 	gates, _ := skillgate.Open(cfg) // best-effort; missing state = all enabled
+	tr := cfg.T()
 
 	for _, name := range names {
 		entries := byName[name]
@@ -83,7 +84,7 @@ func Build(cfg *config.Config, res *scan.Result) *Plan {
 			for _, e := range entries {
 				p.Actions = append(p.Actions, Action{
 					Type: ActionSkip, Name: name, SourcePath: e.Path, Tool: e.Tool, Hash: e.Hash,
-					Note: "globally disabled (asm enable " + name + ")",
+					Note: tr.S("plan.note.global_off", name),
 				})
 			}
 			continue
@@ -186,7 +187,7 @@ func Build(cfg *config.Config, res *scan.Result) *Plan {
 				p.Actions = append(p.Actions, Action{
 					Type: ActionSkip, Name: name,
 					SourcePath: filepath.Join(wr.Path, name), DestPath: dest, Tool: wr.Tool,
-					Note: "disabled for " + wr.Tool + " (asm enable " + name + " --tool " + wr.Tool + ")",
+					Note: tr.S("plan.note.tool_off", wr.Tool, name, wr.Tool),
 				})
 				continue
 			}

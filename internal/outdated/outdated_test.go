@@ -24,7 +24,7 @@ func TestCheckOneUnknown(t *testing.T) {
 		t.Fatal(err)
 	}
 	e := scan.Entry{Name: "demo", Path: skillDir, Class: scan.ClassUser, Tool: "claude"}
-	got := checkOne(e, skillDir, &skilllock.Index{ByName: map[string]skilllock.Entry{}}, skilllock.NewTreeCache())
+	got := checkOne(e, skillDir, &skilllock.Index{ByName: map[string]skilllock.Entry{}}, skilllock.NewTreeCache(), nil)
 	if got.Status != StatusUnknown {
 		t.Fatalf("status=%s msg=%s", got.Status, got.Message)
 	}
@@ -69,7 +69,7 @@ func TestCheckOneGit(t *testing.T) {
 	run("push", "-u", "origin", br)
 
 	e := scan.Entry{Name: "gitskill", Path: dir, Class: scan.ClassUser, Tool: "extra"}
-	got := checkOne(e, dir, nil, nil)
+	got := checkOne(e, dir, nil, nil, nil)
 	if got.Provenance != ProvGit {
 		t.Fatalf("want git provenance, got %s (%s)", got.Provenance, got.Message)
 	}
@@ -125,7 +125,7 @@ func TestCheckOneSkillLockCurrent(t *testing.T) {
 	}
 	idx := &skilllock.Index{ByName: map[string]skilllock.Entry{"grill-me": le}}
 	e := scan.Entry{Name: "grill-me", Path: skillDir, Class: scan.ClassCanonical, Tool: "agents"}
-	got := checkOne(e, skillDir, idx, skilllock.NewTreeCache())
+	got := checkOne(e, skillDir, idx, skilllock.NewTreeCache(), nil)
 	if got.Provenance != ProvSkillLock {
 		t.Fatalf("prov=%s msg=%s", got.Provenance, got.Message)
 	}
@@ -170,7 +170,7 @@ func TestCheckOneSkillLockOutdated(t *testing.T) {
 	}
 	idx := &skilllock.Index{ByName: map[string]skilllock.Entry{"code-review": le}}
 	e := scan.Entry{Name: "code-review", Path: skillDir, Class: scan.ClassCanonical, Tool: "agents"}
-	got := checkOne(e, skillDir, idx, skilllock.NewTreeCache())
+	got := checkOne(e, skillDir, idx, skilllock.NewTreeCache(), nil)
 	if got.Status != StatusOutdated {
 		t.Fatalf("status=%s msg=%s", got.Status, got.Message)
 	}

@@ -211,6 +211,31 @@ var zh = map[string]string{
   asm gates
   asm gates --json
 `,
+	"gate.msg.already_global":   "已全局关闭",
+	"gate.msg.global_off":       "已全局关闭（所有工具不可见；内容已暂存）",
+	"gate.msg.global_redundant": "已全局关闭，无需再按工具关闭；请先 asm enable %s",
+	"gate.msg.already_tools":    "指定工具已是关闭状态",
+	"gate.msg.tools_off":        "已对工具关闭: %s",
+	"gate.msg.global_on":        "已全局开启（已接到全部工具）",
+	"gate.msg.ensure_links":     "确保指定工具已接线",
+	"gate.msg.tools_on":         "已对工具开启: %s",
+	"gate.err.global_need_full": "skill %q 已全局关闭；请先: asm enable %s（不要加 --tool）",
+	"plan.note.global_off":      "已全局关闭（asm enable %s）",
+	"plan.note.tool_off":        "已对 %s 关闭（asm enable %s --tool %s）",
+	"doctor.prov_source":        "SKILL.md 声明了 source（%s）但不在 skill-lock 中，无法对比上游。建议：npx skills add 写入 lock，或保持为独立 git 仓。不需要则: asm remove %s",
+	"doctor.prov_version":       "仅有 frontmatter version（%s），无上游 URL，无法检查更新。建议补充 git remote / skill-lock，或不需要则: asm remove %s",
+	"doctor.prov_none":          "无 provenance（手工安装）。无法用 asm outdated 检查更新。可选：npx skills add … -g（skill-lock）、git clone 到技能目录、或 knownsource.Catalog。清理: asm remove %s",
+	"outdated.msg.git_ok":       "HEAD 与 origin/%s 一致",
+	"outdated.msg.git_behind":   "HEAD 落后或分叉于 origin/%s；更新: asm outdated --update %s",
+	"outdated.msg.lock_ok":      "skill-lock hash 匹配 %s@%s",
+	"outdated.msg.lock_stale":   "上游路径在 %s 上已不存在（删除或改名）；lock 陈旧 — 清理: asm remove %s -y",
+	"outdated.msg.lock_changed": "上游目录在 %s@%s 已变更；更新: asm outdated --update %s",
+	"outdated.msg.fm_source":    "SKILL.md source=%s 但不在 skill-lock（无法对比）。提示: npx skills add <repo> -g、保持 git clone，或 asm remove %s",
+	"outdated.msg.fm_version":   "仅有 frontmatter version（无上游 URL）。提示: 加 skill-lock / git remote，或 asm remove %s",
+	"outdated.msg.no_prov":      "无 provenance（手工安装）。提示: npx skills add … -g、git clone 技能目录、knownsource Catalog，或 asm remove %s",
+	"outdated.msg.project_lock": "项目 lock: %s；内容 hash 对比尚未实现（仅支持全局 skill-lock / git / known）",
+	"outdated.msg.known_ok":     "known 源 %s@%s（%d 个文件一致）",
+	"outdated.msg.known_diff":   "known 源 %s@%s: %d/%d 文件不同（如 %s）；%s",
 
 	"main.usage": `agent-skills-manager (asm) %s — Agent Skills 归口与治理中枢
 
@@ -449,6 +474,31 @@ Usage:
   asm gates
   asm gates --json
 `,
+	"gate.msg.already_global":   "already globally disabled",
+	"gate.msg.global_off":       "globally disabled (hidden from all tools; content parked)",
+	"gate.msg.global_redundant": "already globally disabled; per-tool disable is redundant until: asm enable %s",
+	"gate.msg.already_tools":    "already disabled for requested tools",
+	"gate.msg.tools_off":        "disabled for tools: %s",
+	"gate.msg.global_on":        "globally enabled (wired to all tools)",
+	"gate.msg.ensure_links":     "ensuring links for requested tools",
+	"gate.msg.tools_on":         "enabled for tools: %s",
+	"gate.err.global_need_full": "skill %q is globally disabled; run: asm enable %s (without --tool)",
+	"plan.note.global_off":      "globally disabled (asm enable %s)",
+	"plan.note.tool_off":        "disabled for %s (asm enable %s --tool %s)",
+	"doctor.prov_source":        "SKILL.md declares source (%s) but not in skill-lock; cannot compare. Tip: npx skills add for lock, or keep as git clone. Or: asm remove %s",
+	"doctor.prov_version":       "frontmatter version only (%s); no upstream URL. Tip: skill-lock / git remote, or: asm remove %s",
+	"doctor.prov_none":          "no provenance (manual install). Cannot check with asm outdated. Tip: npx skills add … -g, git clone skill dir, knownsource.Catalog, or: asm remove %s",
+	"outdated.msg.git_ok":       "HEAD matches origin/%s",
+	"outdated.msg.git_behind":   "HEAD behind or diverged from origin/%s; update: asm outdated --update %s",
+	"outdated.msg.lock_ok":      "skill-lock hash matches %s@%s",
+	"outdated.msg.lock_stale":   "upstream path missing on %s (deleted or renamed); lock entry stale — clean: asm remove %s -y",
+	"outdated.msg.lock_changed": "upstream folder changed on %s@%s; update: asm outdated --update %s",
+	"outdated.msg.fm_source":    "SKILL.md source=%s but not in skill-lock (cannot compare). Tip: npx skills add <repo> -g, keep as git clone, or asm remove %s",
+	"outdated.msg.fm_version":   "frontmatter version only (no upstream URL). Tip: add skill-lock / git remote, or asm remove %s",
+	"outdated.msg.no_prov":      "no provenance (manual install). Tip: npx skills add … -g, git clone skill dir, knownsource Catalog, or asm remove %s",
+	"outdated.msg.project_lock": "project lock at %s; content-hash compare not implemented yet (global skill-lock / git / known only)",
+	"outdated.msg.known_ok":     "known source %s@%s (%d files match)",
+	"outdated.msg.known_diff":   "known source %s@%s: %d/%d files differ (e.g. %s); %s",
 
 	"main.usage": `agent-skills-manager (asm) %s — agent skills home & governance hub
 

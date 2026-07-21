@@ -179,11 +179,12 @@ func (s *Store) Disable(name string, tools []string) (*Result, error) {
 
 	if len(tools) == 0 {
 		// global off
+		tr := s.cfg.T()
 		if e.GlobalOff {
 			res.Already = true
 			res.GlobalOff = true
 			res.ToolsOff = e.ToolsOff
-			res.Message = "already globally disabled"
+			res.Message = tr.S("gate.msg.already_global")
 			return res, nil
 		}
 		removed, err := s.removeToolLinks(name, nil) // all wire tools
@@ -204,15 +205,16 @@ func (s *Store) Disable(name string, tools []string) (*Result, error) {
 		}
 		res.GlobalOff = true
 		res.ToolsOff = e.ToolsOff
-		res.Message = "globally disabled (hidden from all tools; content parked)"
+		res.Message = tr.S("gate.msg.global_off")
 		return res, nil
 	}
 
 	// per-tool off
+	tr := s.cfg.T()
 	if e.GlobalOff {
 		res.GlobalOff = true
 		res.ToolsOff = e.ToolsOff
-		res.Message = "skill is globally disabled; per-tool disable is redundant until enable"
+		res.Message = tr.S("gate.msg.global_redundant", name)
 		res.Already = true
 		return res, nil
 	}
@@ -230,7 +232,7 @@ func (s *Store) Disable(name string, tools []string) (*Result, error) {
 	if len(newly) == 0 {
 		res.Already = true
 		res.ToolsOff = e.ToolsOff
-		res.Message = "already disabled for requested tools"
+		res.Message = tr.S("gate.msg.already_tools")
 		return res, nil
 	}
 	removed, err := s.removeToolLinks(name, newly)
@@ -244,7 +246,7 @@ func (s *Store) Disable(name string, tools []string) (*Result, error) {
 		return nil, err
 	}
 	res.ToolsOff = e.ToolsOff
-	res.Message = "disabled for tools: " + strings.Join(newly, ", ")
+	res.Message = tr.S("gate.msg.tools_off", strings.Join(newly, ", "))
 	return res, nil
 }
 
@@ -286,13 +288,14 @@ func (s *Store) Enable(name string, tools []string) (*Result, error) {
 		}
 		res.Linked = linked
 		res.GlobalOff = false
-		res.Message = "globally enabled (wired to all tools)"
+		res.Message = s.cfg.T().S("gate.msg.global_on")
 		return res, nil
 	}
 
 	// per-tool on
+	tr := s.cfg.T()
 	if e.GlobalOff {
-		return nil, fmt.Errorf("skill %q is globally disabled; run: asm enable %s  (without --tool)", name, name)
+		return nil, fmt.Errorf("%s", tr.S("gate.err.global_need_full", name, name))
 	}
 	if !existsDir(filepath.Join(s.AgentsDir, name)) {
 		return nil, fmt.Errorf("canonical skill missing at %s", filepath.Join(s.AgentsDir, name))
@@ -309,9 +312,9 @@ func (s *Store) Enable(name string, tools []string) (*Result, error) {
 		}
 	}
 	if len(cleared) == 0 {
-		res.Message = "ensuring links for requested tools"
+		res.Message = tr.S("gate.msg.ensure_links")
 	} else {
-		res.Message = "enabled for tools: " + strings.Join(cleared, ", ")
+		res.Message = tr.S("gate.msg.tools_on", strings.Join(cleared, ", "))
 	}
 	e.ToolsOff = mapKeys(set)
 	if len(e.ToolsOff) == 0 {

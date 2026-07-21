@@ -15,6 +15,7 @@ import (
 
 	"github.com/anj/agent-skills-manager/internal/config"
 	"github.com/anj/agent-skills-manager/internal/fsutil"
+	"github.com/anj/agent-skills-manager/internal/i18n"
 	"github.com/anj/agent-skills-manager/internal/knownsource"
 	"github.com/anj/agent-skills-manager/internal/scan"
 	"github.com/anj/agent-skills-manager/internal/skill"
@@ -94,6 +95,7 @@ func Run(cfg *config.Config, vl *vendorlist.List) (*Result, error) {
 	lockIdx := skilllock.LoadIndex()
 	treeCache := skilllock.NewTreeCache()
 	agentsAbs := fsutil.Abs(cfg.AgentsSkills)
+	tr := cfg.T()
 
 	for _, e := range res.Entries {
 		switch e.Class {
@@ -115,7 +117,7 @@ func Run(cfg *config.Config, vl *vendorlist.List) (*Result, error) {
 		}
 		seenPath[contentPath] = true
 
-		ent := checkOne(e, contentPath, lockIdx, treeCache)
+		ent := checkOne(e, contentPath, lockIdx, treeCache, tr)
 		key := strings.ToLower(ent.Name)
 		rank := entryPreferRank(ent, agentsAbs)
 		if prev, ok := byName[key]; ok {
@@ -169,7 +171,10 @@ func entryPreferRank(e Entry, agentsAbs string) int {
 	return 2
 }
 
-func checkOne(e scan.Entry, contentPath string, lockIdx *skilllock.Index, trees *skilllock.TreeCache) Entry {
+func checkOne(e scan.Entry, contentPath string, lockIdx *skilllock.Index, trees *skilllock.TreeCache, tr *i18n.T) Entry {
+	if tr == nil {
+		tr = i18n.New(i18n.ZH)
+	}
 	ent := Entry{
 		Name:  e.Name,
 		Path:  contentPath,
@@ -201,10 +206,10 @@ func checkOne(e scan.Entry, contentPath string, lockIdx *skilllock.Index, trees 
 			ent.RemoteRef = shortSHA(remoteSHA)
 			if remoteSHA == local {
 				ent.Status = StatusCurrent
-				ent.Message = "HEAD matches origin/" + branch
+				ent.Message = tr.S("outdated.msg.git_ok", branch)
 			} else {
 				ent.Status = StatusOutdated
-				ent.Message = "HEAD behind or diverged from origin/" + branch + "; update: asm outdated --update " + e.Name
+				ent.Message = tr.S("outdated.msg.git_behind", branch, e.Name)
 			}
 			return ent
 		}
@@ -214,7 +219,7 @@ func checkOne(e scan.Entry, contentPath string, lockIdx *skilllock.Index, trees 
 	if lockIdx != nil {
 		if le, ok := lockIdx.Lookup(e.Name); ok {
 			if le.CanCheckGitHub() {
-				return checkSkillLockGitHub(ent, le, trees)
+				return checkSkillLockGitHub(ent, le, trees, tr)
 			}
 			// lock entry exists but not checkable yet
 			ent.Provenance = ProvSkillLock
@@ -231,7 +236,7 @@ func checkOne(e scan.Entry, contentPath string, lockIdx *skilllock.Index, trees 
 
 	// 3) known sources not in skill-lock (e.g. dws via dingtalk-workspace-cli installer)
 	if ks, ok := knownsource.Match(e.Name, contentPath); ok {
-		return checkKnownSource(ent, contentPath, ks, trees)
+		return checkKnownSource(ent, contentPath, ks, trees, tr)
 	}
 
 	// 4) frontmatter source/repository/version — record unknown how to fetch
@@ -241,16 +246,14 @@ func checkOne(e scan.Entry, contentPath string, lockIdx *skilllock.Index, trees 
 			ent.Provenance = ProvFrontmatter
 			ent.Remote = src
 			ent.Status = StatusUnknown
-			ent.Message = "SKILL.md source=" + src + " but not in skill-lock (cannot compare). " +
-				"Tip: npx skills add <repo> -g, keep as git clone, or asm remove " + e.Name
+			ent.Message = tr.S("outdated.msg.fm_source", src, e.Name)
 			return ent
 		}
 		if ver, ok := sk.Frontmatter["version"].(string); ok && strings.TrimSpace(ver) != "" {
 			ent.Provenance = ProvFrontmatter
 			ent.LocalRef = strings.TrimSpace(ver)
 			ent.Status = StatusUnknown
-			ent.Message = "frontmatter version only (no upstream URL). " +
-				"Tip: add skill-lock / git remote, or asm remove " + e.Name
+			ent.Message = tr.S("outdated.msg.fm_version", e.Name)
 			return ent
 		}
 	}
@@ -260,21 +263,21 @@ func checkOne(e scan.Entry, contentPath string, lockIdx *skilllock.Index, trees 
 	if lock := findProjectSkillsLock(contentPath); lock != "" {
 		ent.Provenance = ProvSkillsLock
 		ent.Status = StatusUnknown
-		ent.Message = "project lock at " + fsutil.RelHome(lock) +
-			"; content-hash compare not implemented yet (global skill-lock / git / known only)"
+		ent.Message = tr.S("outdated.msg.project_lock", fsutil.RelHome(lock))
 		return ent
 	}
 
 	ent.Status = StatusUnknown
-	ent.Message = "no provenance (manual install). " +
-		"Tip: npx skills add … -g (skill-lock), git clone skill dir, knownsource Catalog for CLI installers, " +
-		"or asm remove " + e.Name
+	ent.Message = tr.S("outdated.msg.no_prov", e.Name)
 	return ent
 }
 
 // checkKnownSource compares local skill files to GitHub blob SHAs under the known folder.
 // Used for installers that copy skills without writing skill-lock (dws, etc.).
-func checkKnownSource(ent Entry, contentPath string, ks knownsource.Source, trees *skilllock.TreeCache) Entry {
+func checkKnownSource(ent Entry, contentPath string, ks knownsource.Source, trees *skilllock.TreeCache, tr *i18n.T) Entry {
+	if tr == nil {
+		tr = i18n.New(i18n.ZH)
+	}
 	ent.Provenance = ProvKnown
 	ent.Remote = ks.SourceURL
 	if ent.Remote == "" {
@@ -364,16 +367,19 @@ func checkKnownSource(ent Entry, contentPath string, ks knownsource.Source, tree
 
 	if mismatched == 0 {
 		ent.Status = StatusCurrent
-		ent.Message = fmt.Sprintf("known source %s@%s (%d files match)", ks.OwnerRepo, refLabel, checked)
+		ent.Message = tr.S("outdated.msg.known_ok", ks.OwnerRepo, refLabel, checked)
 		return ent
 	}
 	ent.Status = StatusOutdated
-	ent.Message = fmt.Sprintf("known source %s@%s: %d/%d files differ (e.g. %s); %s",
+	ent.Message = tr.S("outdated.msg.known_diff",
 		ks.OwnerRepo, refLabel, mismatched, checked+mismatched, firstPath, ks.OutdatedHint())
 	return ent
 }
 
-func checkSkillLockGitHub(ent Entry, le skilllock.Entry, trees *skilllock.TreeCache) Entry {
+func checkSkillLockGitHub(ent Entry, le skilllock.Entry, trees *skilllock.TreeCache, tr *i18n.T) Entry {
+	if tr == nil {
+		tr = i18n.New(i18n.ZH)
+	}
 	ent.Provenance = ProvSkillLock
 	ent.Remote = le.Source
 	if le.SourceURL != "" {
@@ -392,8 +398,7 @@ func checkSkillLockGitHub(ent Entry, le skilllock.Entry, trees *skilllock.TreeCa
 		// Path gone upstream (renamed/deleted) is actionable, not a hard error.
 		if strings.Contains(err.Error(), "skill path not found") {
 			ent.Status = StatusOutdated
-			ent.Message = "upstream path missing on " + le.Source +
-				" (deleted or renamed); lock entry stale — clean: asm remove " + ent.Name + " -y"
+			ent.Message = tr.S("outdated.msg.lock_stale", le.Source, ent.Name)
 			return ent
 		}
 		ent.Status = StatusError
@@ -403,11 +408,10 @@ func checkSkillLockGitHub(ent Entry, le skilllock.Entry, trees *skilllock.TreeCa
 	ent.RemoteRef = shortSHA(remoteSHA)
 	if remoteSHA == le.SkillFolderHash {
 		ent.Status = StatusCurrent
-		ent.Message = "skill-lock hash matches " + le.Source + "@" + branch
+		ent.Message = tr.S("outdated.msg.lock_ok", le.Source, branch)
 	} else {
 		ent.Status = StatusOutdated
-		ent.Message = "upstream folder changed on " + le.Source + "@" + branch +
-			"; update: asm outdated --update " + ent.Name
+		ent.Message = tr.S("outdated.msg.lock_changed", le.Source, branch, ent.Name)
 	}
 	return ent
 }
