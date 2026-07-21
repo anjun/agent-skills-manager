@@ -2,6 +2,7 @@
 package selfupdate
 
 import (
+	"archive/zip"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -18,8 +19,8 @@ import (
 const (
 	// DefaultRepo is the GitHub owner/repo for releases.
 	DefaultRepo = "anjun/agent-skills-manager"
-	// AssetPrefix is the release asset name prefix.
-	AssetPrefix = "agent-skills-manager"
+	// MacOSZip is the unified macOS installer package (arm64 + amd64).
+	MacOSZip = "asm-macos.zip"
 	userAgent   = "agent-skills-manager"
 	httpTimeout = 60 * time.Second
 )
@@ -29,31 +30,25 @@ var HTTPClient = &http.Client{Timeout: httpTimeout}
 
 // Options for Check / Apply.
 type Options struct {
-	// Current is the running version (e.g. "0.3.0" or "v0.3.0").
-	Current string
-	// Repo is "owner/repo". Empty → DefaultRepo or ASM_GITHUB_REPO.
-	Repo string
-	// Token is a GitHub token. Empty → env / gh auth token.
-	Token string
-	// CheckOnly skips download/replace.
-	CheckOnly bool
-	// Yes skips confirmation (caller decides).
-	Yes bool
-	// Executable is the path to replace. Empty → os.Executable().
+	Current    string
+	Repo       string
+	Token      string
+	CheckOnly  bool
+	Yes        bool
 	Executable string
 }
 
 // Result of a check or upgrade.
 type Result struct {
-	Current     string `json:"current"`
-	Latest      string `json:"latest"`
-	Repo        string `json:"repo"`
-	Asset       string `json:"asset,omitempty"`
-	URL         string `json:"url,omitempty"`
-	UpToDate    bool   `json:"up_to_date"`
-	Updated     bool   `json:"updated"`
-	Message     string `json:"message"`
-	ReleaseURL  string `json:"release_url,omitempty"`
+	Current    string `json:"current"`
+	Latest     string `json:"latest"`
+	Repo       string `json:"repo"`
+	Asset      string `json:"asset,omitempty"`
+	URL        string `json:"url,omitempty"`
+	UpToDate   bool   `json:"up_to_date"`
+	Updated    bool   `json:"updated"`
+	Message    string `json:"message"`
+	ReleaseURL string `json:"release_url,omitempty"`
 }
 
 type ghRelease struct {
@@ -67,12 +62,16 @@ type ghRelease struct {
 type ghAsset struct {
 	Name               string `json:"name"`
 	BrowserDownloadURL string `json:"browser_download_url"`
-	URL                string `json:"url"` // API URL for private download
+	URL                string `json:"url"`
 	Size               int64  `json:"size"`
 }
 
 // Run checks (and optionally applies) a self-update from GitHub Releases.
 func Run(ctx context.Context, opt Options) (*Result, error) {
+	if runtime.GOOS != "darwin" {
+		return nil, fmt.Errorf("asm upgrade currently supports macOS only (got %s)", runtime.GOOS)
+	}
+
 	repo := strings.TrimSpace(opt.Repo)
 	if repo == "" {
 		repo = strings.TrimSpace(os.Getenv("ASM_GITHUB_REPO"))
@@ -104,10 +103,9 @@ func Run(ctx context.Context, opt Options) (*Result, error) {
 		return res, nil
 	}
 
-	assetName := expectedAssetName()
-	asset, ok := findAsset(rel.Assets, assetName)
+	asset, ok := findAsset(rel.Assets, candidateAssetNames()...)
 	if !ok {
-		return nil, fmt.Errorf("release %s has no asset %q (os=%s arch=%s)", rel.TagName, assetName, runtime.GOOS, runtime.GOARCH)
+		return nil, fmt.Errorf("release %s has no macOS package (want %s)", rel.TagName, MacOSZip)
 	}
 	res.Asset = asset.Name
 	res.URL = asset.BrowserDownloadURL
@@ -129,13 +127,21 @@ func Run(ctx context.Context, opt Options) (*Result, error) {
 		}
 	}
 
-	tmp, err := downloadAsset(ctx, asset, token)
+	dl, err := downloadAsset(ctx, asset, token)
 	if err != nil {
 		return nil, err
 	}
-	defer os.Remove(tmp)
+	defer os.Remove(dl)
 
-	if err := replaceExecutable(exe, tmp); err != nil {
+	bin, err := materializeBinary(dl, asset.Name)
+	if err != nil {
+		return nil, err
+	}
+	if bin != dl {
+		defer os.Remove(bin)
+	}
+
+	if err := replaceExecutable(exe, bin); err != nil {
 		return nil, err
 	}
 	res.Updated = true
@@ -144,31 +150,178 @@ func Run(ctx context.Context, opt Options) (*Result, error) {
 	return res, nil
 }
 
-func expectedAssetName() string {
-	name := fmt.Sprintf("%s-%s-%s", AssetPrefix, runtime.GOOS, runtime.GOARCH)
-	if runtime.GOOS == "windows" {
-		name += ".exe"
+// candidateAssetNames preferred first.
+func candidateAssetNames() []string {
+	return []string{
+		MacOSZip,
+		// legacy names from older releases
+		"agent-skills-manager-darwin-arm64.tar.gz",
+		"agent-skills-manager-darwin-amd64.tar.gz",
+		"agent-skills-manager-darwin-arm64",
+		"agent-skills-manager-darwin-amd64",
 	}
-	return name
 }
 
-func findAsset(assets []ghAsset, want string) (ghAsset, bool) {
-	wantLower := strings.ToLower(want)
-	for _, a := range assets {
-		if strings.EqualFold(a.Name, want) {
-			return a, true
+// expectedAssetName is the primary asset (tests / display).
+func expectedAssetName() string {
+	return MacOSZip
+}
+
+func findAsset(assets []ghAsset, names ...string) (ghAsset, bool) {
+	for _, want := range names {
+		for _, a := range assets {
+			if strings.EqualFold(a.Name, want) {
+				// for legacy per-arch assets, skip wrong arch
+				if strings.Contains(a.Name, "arm64") && runtime.GOARCH != "arm64" {
+					continue
+				}
+				if strings.Contains(a.Name, "amd64") && runtime.GOARCH != "amd64" {
+					continue
+				}
+				return a, true
+			}
 		}
 	}
-	// fuzzy: contains os-arch
-	needle := strings.ToLower(runtime.GOOS + "-" + runtime.GOARCH)
+	// fuzzy: any asm-macos / agent-skills-manager zip for mac
 	for _, a := range assets {
 		n := strings.ToLower(a.Name)
-		if strings.Contains(n, needle) && strings.Contains(n, "agent-skills-manager") {
+		if strings.Contains(n, "asm-macos") && strings.HasSuffix(n, ".zip") {
 			return a, true
 		}
-		_ = wantLower
 	}
 	return ghAsset{}, false
+}
+
+func archBinaryName() string {
+	switch runtime.GOARCH {
+	case "arm64":
+		return "asm-arm64"
+	case "amd64":
+		return "asm-amd64"
+	default:
+		return "asm"
+	}
+}
+
+// materializeBinary turns a downloaded asset into a raw executable path.
+func materializeBinary(path, assetName string) (string, error) {
+	lower := strings.ToLower(assetName)
+	switch {
+	case strings.HasSuffix(lower, ".zip"):
+		return extractFromZip(path, archBinaryName(), "asm")
+	case strings.HasSuffix(lower, ".tar.gz") || strings.HasSuffix(lower, ".tgz"):
+		// legacy: prefer tar via system tar for simplicity
+		return extractTarGzAsm(path)
+	default:
+		// bare binary
+		_ = os.Chmod(path, 0o755)
+		return path, nil
+	}
+}
+
+func extractFromZip(zipPath string, preferNames ...string) (string, error) {
+	r, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return "", err
+	}
+	defer r.Close()
+
+	var match *zip.File
+	for _, name := range preferNames {
+		for _, f := range r.File {
+			base := filepath.Base(f.Name)
+			if base == name || f.Name == name {
+				match = f
+				break
+			}
+		}
+		if match != nil {
+			break
+		}
+	}
+	if match == nil {
+		// any file named asm*
+		for _, f := range r.File {
+			base := filepath.Base(f.Name)
+			if base == "asm" || strings.HasPrefix(base, "asm-") {
+				match = f
+				break
+			}
+		}
+	}
+	if match == nil {
+		return "", fmt.Errorf("zip %s has no asm binary for this Mac", filepath.Base(zipPath))
+	}
+
+	rc, err := match.Open()
+	if err != nil {
+		return "", err
+	}
+	defer rc.Close()
+
+	out, err := os.CreateTemp("", "asm-bin-*")
+	if err != nil {
+		return "", err
+	}
+	outPath := out.Name()
+	if _, err := io.Copy(out, rc); err != nil {
+		out.Close()
+		os.Remove(outPath)
+		return "", err
+	}
+	if err := out.Close(); err != nil {
+		os.Remove(outPath)
+		return "", err
+	}
+	if err := os.Chmod(outPath, 0o755); err != nil {
+		os.Remove(outPath)
+		return "", err
+	}
+	return outPath, nil
+}
+
+func extractTarGzAsm(path string) (string, error) {
+	dir, err := os.MkdirTemp("", "asm-tar-*")
+	if err != nil {
+		return "", err
+	}
+	defer os.RemoveAll(dir)
+	cmd := exec.Command("tar", "-xzf", path, "-C", dir)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("tar extract: %w (%s)", err, truncate(string(out), 120))
+	}
+	// find asm
+	var found string
+	_ = filepath.Walk(dir, func(p string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+		base := filepath.Base(p)
+		if base == "asm" || base == archBinaryName() {
+			found = p
+			return io.EOF
+		}
+		return nil
+	})
+	if found == "" {
+		return "", fmt.Errorf("tar has no asm binary")
+	}
+	out, err := os.CreateTemp("", "asm-bin-*")
+	if err != nil {
+		return "", err
+	}
+	outPath := out.Name()
+	out.Close()
+	b, err := os.ReadFile(found)
+	if err != nil {
+		os.Remove(outPath)
+		return "", err
+	}
+	if err := os.WriteFile(outPath, b, 0o755); err != nil {
+		os.Remove(outPath)
+		return "", err
+	}
+	return outPath, nil
 }
 
 func fetchLatestRelease(ctx context.Context, repo, token string) (*ghRelease, error) {
@@ -205,7 +358,6 @@ func fetchLatestRelease(ctx context.Context, repo, token string) (*ghRelease, er
 }
 
 func downloadAsset(ctx context.Context, asset ghAsset, token string) (tmpPath string, err error) {
-	// Prefer API asset URL (works for private repos with token).
 	url := asset.URL
 	if url == "" {
 		url = asset.BrowserDownloadURL
@@ -217,7 +369,6 @@ func downloadAsset(ctx context.Context, asset ghAsset, token string) (tmpPath st
 	if err != nil {
 		return "", err
 	}
-	// For API asset downloads GitHub requires this Accept.
 	setGitHubHeaders(req, token, true)
 	resp, err := HTTPClient.Do(req)
 	if err != nil {
@@ -242,15 +393,10 @@ func downloadAsset(ctx context.Context, asset ghAsset, token string) (tmpPath st
 		os.Remove(tmpPath)
 		return "", err
 	}
-	if err := os.Chmod(tmpPath, 0o755); err != nil {
-		os.Remove(tmpPath)
-		return "", err
-	}
 	return tmpPath, nil
 }
 
 func replaceExecutable(dest, src string) error {
-	// write next to dest then rename
 	next := dest + ".new"
 	bak := dest + ".old"
 	_ = os.Remove(next)
@@ -274,16 +420,13 @@ func replaceExecutable(dest, src string) error {
 		os.Remove(next)
 		return err
 	}
-	// move current → bak, next → dest
 	if err := os.Rename(dest, bak); err != nil {
-		// maybe dest doesn't exist yet
 		if !os.IsNotExist(err) {
 			os.Remove(next)
 			return fmt.Errorf("backup current binary: %w", err)
 		}
 	}
 	if err := os.Rename(next, dest); err != nil {
-		// try restore
 		_ = os.Rename(bak, dest)
 		os.Remove(next)
 		return fmt.Errorf("install new binary: %w", err)
@@ -322,7 +465,6 @@ func githubToken() string {
 	return strings.TrimSpace(string(out))
 }
 
-// normalizeVersion strips leading v and whitespace.
 func normalizeVersion(v string) string {
 	v = strings.TrimSpace(v)
 	v = strings.TrimPrefix(v, "v")
@@ -330,7 +472,6 @@ func normalizeVersion(v string) string {
 	return v
 }
 
-// compareVersions returns -1 if a<b, 0 if equal, 1 if a>b (simple semver-ish).
 func compareVersions(a, b string) int {
 	a = normalizeVersion(a)
 	b = normalizeVersion(b)

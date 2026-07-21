@@ -4,107 +4,31 @@
 
 **Agent skills home & governance hub** (alias **`asm`**).
 
-Discover skills on tool and project roots, classify them, unify under `~/.agents/skills/` with symlinks for Claude / Cursor / Grok / Codex / Gemini, and **check** skills that have proven provenance for updates (read-only).
+> Releases currently ship **macOS only** — one zip for both Apple Silicon and Intel.
 
-- **Strengths**: multi-tool inventory, canonical home, conflicts, doctor, outdated, self-update  
-- **Non-goals**: replacing [`npx skills`](https://github.com/vercel-labs/skills) marketplace install
+## Install
 
-## Install (recommended)
+1. Open [Releases](https://github.com/anjun/agent-skills-manager/releases)  
+2. Download **`asm-macos.zip`**  
+3. Unzip → double-click **`Install.command`** (right-click → Open if blocked)  
+4. Open a **new** terminal: `asm version`
 
-One-liner (installs to `~/.local/bin`, auto-detects OS/arch):
+Upgrade later: `asm upgrade`
 
-**With [GitHub CLI](https://cli.github.com/) (best for private repos):**
+CLI install (with `gh auth`):
 
 ```bash
 gh api -H 'Accept: application/vnd.github.raw' \
   repos/anjun/agent-skills-manager/contents/scripts/install.sh | bash
 ```
 
-**From a clone:**
+## Release
 
 ```bash
-bash scripts/install.sh
+make release
 ```
 
-```bash
-ASM_VERSION=0.3.0 ASM_INSTALL_DIR=$HOME/bin bash scripts/install.sh
-asm version
-asm upgrade   # later upgrades
-```
-
-Private repos need `gh auth login` or `GITHUB_TOKEN` / `GH_TOKEN`.
-
-**From source:**
-
-```bash
-go build -o bin/agent-skills-manager ./cmd/agent-skills-manager
-ln -sf agent-skills-manager bin/asm
-./bin/asm version
-```
-
-## Self-update (GitHub Releases)
-
-```bash
-asm upgrade --check
-asm upgrade
-asm upgrade -y
-```
-
-Default repo: `anjun/agent-skills-manager` (`ASM_GITHUB_REPO=owner/repo` to override).  
-Private repos need `GITHUB_TOKEN` / `GH_TOKEN` or `gh auth login`.
-
-## Releasing (GitHub Actions)
-
-| Trigger | What runs | Release? |
-|---------|-----------|----------|
-| push `main` | **CI**: `go test` only | no |
-| `make release VERSION=x.y.z` / push `v*` tag | **Release**: multi-arch build + upload | yes |
-
-```bash
-make release                 # auto patch bump → tag → push → CI release
-make release BUMP=minor
-make release VERSION=0.4.0   # explicit version
-make summary
-```
-
-## Self-test
-
-```bash
-./scripts/selftest.sh
-```
-
-## Quick start
-
-```bash
-asm scan
-asm plan
-asm apply
-asm outdated              # check-only
-asm outdated --all        # include unknown
-asm upgrade --check       # check asm itself
-asm upgrade               # self-update from GitHub Releases
-asm doctor
-asm undo last
-```
-
-## Classes
-
-| Class | Meaning |
-|-------|---------|
-| **canonical** | under `~/.agents/skills` |
-| **user** | user skills in tool dirs (migrate candidates) |
-| **project** | repo-local (`--project-root`); never migrate |
-| **vendor** | bundled/curated; Grok via `grok inspect` |
-
-## outdated
-
-Provenance only (check-only; no pull / no lock rewrite):
-
-1. Skill dir is its own git repo with `origin` → compare HEAD to origin  
-2. `~/.agents/.skill-lock.json` (`npx skills` global lock) GitHub entry → compare `skillFolderHash` via Trees API  
-3. Frontmatter source/version → unknown  
-4. Project `skills-lock.json` → detected (content-hash compare not yet)  
-5. Else unknown (hidden unless `--all`)
+CI publishes a single `asm-macos.zip` (arm64 + amd64 + double-click installer).
 
 ## License
 

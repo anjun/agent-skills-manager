@@ -1,13 +1,7 @@
 name: Release
 
-# 方式 1（推荐）：本地 make 打 tag 并 push → 自动构建并发布
-#   make release VERSION=0.3.1
-#
-# 方式 2：手动推 tag
-#   git tag v0.3.1 && git push origin v0.3.1
-#
-# 方式 3：Actions 页面手动触发 → 自动打 tag 并发布
-#   workflow_dispatch → 填写 version（如 0.3.1）
+# 本地：make release  /  make release VERSION=0.3.2
+# 仅发布 macOS 通用包（Intel + Apple Silicon 二合一）
 
 on:
   push:
@@ -51,7 +45,6 @@ jobs:
             RAW="${TAG#v}"
             echo "version=${RAW}" >> "$GITHUB_OUTPUT"
             echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-            # pre-release if tag contains -
             if [[ "$TAG" == *-* ]]; then
               echo "prerelease=true" >> "$GITHUB_OUTPUT"
             else
@@ -65,8 +58,6 @@ jobs:
           TAG: ${{ steps.ver.outputs.tag }}
         run: |
           if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG already exists on remote/local history"
-            # Ensure we are releasing that tag's commit if it points elsewhere — use current HEAD and move only if force not allowed
             EXISTING="$(git rev-parse "$TAG")"
             HEAD="$(git rev-parse HEAD)"
             if [ "$EXISTING" != "$HEAD" ]; then
@@ -87,46 +78,36 @@ jobs:
       - name: Test
         run: go test ./...
 
-      - name: Build multi-platform binaries
+      - name: Build macOS universal zip (arm64 + amd64)
         env:
           VERSION: ${{ steps.ver.outputs.version }}
         run: |
           set -euo pipefail
-          mkdir -p dist
-          # raw binary names stay for `asm upgrade`; tar.gz is for human install (preserves +x)
-          targets=(
-            "darwin amd64"
-            "darwin arm64"
-            "linux amd64"
-            "linux arm64"
-            "windows amd64"
-          )
-          for t in "${targets[@]}"; do
-            set -- $t
-            goos=$1
-            goarch=$2
-            out="agent-skills-manager-${goos}-${goarch}"
-            if [ "$goos" = "windows" ]; then
-              out="${out}.exe"
-            fi
-            echo "Building $out"
-            CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build \
+          mkdir -p dist stage
+          for goarch in arm64 amd64; do
+            echo "Building darwin/${goarch}"
+            CGO_ENABLED=0 GOOS=darwin GOARCH="$goarch" go build \
               -ldflags "-s -w -X main.version=${VERSION}" \
-              -o "dist/${out}" \
+              -o "stage/asm-${goarch}" \
               ./cmd/agent-skills-manager
-            chmod +x "dist/${out}"
-
-            # Human-friendly archive: extract → ./asm (mode 755 preserved)
-            if [ "$goos" != "windows" ]; then
-              stage="$(mktemp -d)"
-              cp "dist/${out}" "${stage}/asm"
-              chmod 755 "${stage}/asm"
-              tar -C "${stage}" -czf "dist/${out}.tar.gz" asm
-              rm -rf "${stage}"
-            fi
+            chmod 755 "stage/asm-${goarch}"
           done
-          (cd dist && shasum -a 256 * > checksums.txt)
-          ls -la dist
+
+          cp scripts/Install.command stage/Install.command
+          chmod 755 stage/Install.command
+          cp scripts/README-macOS.txt stage/README.txt
+
+          # zip 保留可执行位；单一安装包（Intel + Apple）
+          (
+            cd stage
+            zip -9 -r "../dist/asm-macos.zip" \
+              asm-arm64 asm-amd64 \
+              Install.command \
+              README.txt
+          )
+          (cd dist && shasum -a 256 asm-macos.zip > checksums.txt)
+          ls -la dist stage
+          unzip -l dist/asm-macos.zip
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -136,33 +117,16 @@ jobs:
           generate_release_notes: true
           prerelease: ${{ steps.ver.outputs.prerelease == 'true' }}
           body: |
-            ## 安装（macOS Apple Silicon 示例）
+            ## 安装（macOS 通用 · Intel + Apple 芯片）
 
-            **推荐：下载 `.tar.gz`（保留可执行权限）**
-            ```bash
-            tar -xzf agent-skills-manager-darwin-arm64.tar.gz
-            sudo mv asm /usr/local/bin/asm   # 或: mkdir -p ~/bin && mv asm ~/bin/
-            asm version
-            ```
+            1. 下载 **`asm-macos.zip`**
+            2. 双击解压
+            3. 双击 **`Install.command`**（右键 → 打开 若被拦截）
+            4. 新开终端：`asm version`
 
-            **若下载的是无扩展名裸二进制**（浏览器常丢掉 +x，Finder 会显示成 Document）：
-            ```bash
-            chmod +x agent-skills-manager-darwin-arm64
-            xattr -d com.apple.quarantine agent-skills-manager-darwin-arm64 2>/dev/null || true
-            mv agent-skills-manager-darwin-arm64 ~/bin/asm
-            ```
-
-            已安装过可用：`asm upgrade`
+            已安装：`asm upgrade`
           files: |
-            dist/agent-skills-manager-darwin-amd64
-            dist/agent-skills-manager-darwin-amd64.tar.gz
-            dist/agent-skills-manager-darwin-arm64
-            dist/agent-skills-manager-darwin-arm64.tar.gz
-            dist/agent-skills-manager-linux-amd64
-            dist/agent-skills-manager-linux-amd64.tar.gz
-            dist/agent-skills-manager-linux-arm64
-            dist/agent-skills-manager-linux-arm64.tar.gz
-            dist/agent-skills-manager-windows-amd64.exe
+            dist/asm-macos.zip
             dist/checksums.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
