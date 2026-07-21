@@ -60,6 +60,9 @@ func main() {
 		runPlan(cfg, vl, args)
 	case "apply":
 		runApply(cfg, vl, args)
+	case "sync":
+		// W2: rescan → plan → apply (same conflict rules as apply)
+		runSync(cfg, vl, args)
 	case "undo":
 		id := "last"
 		if len(args) > 0 {
@@ -328,6 +331,63 @@ func runApply(cfg *config.Config, vl *vendorlist.List, args []string) {
 		}
 		p = plan.Build(cfg, res)
 	}
+	if _, err := apply.Run(cfg, p, os.Stdin); err != nil {
+		fail(cfg, err)
+	}
+}
+
+// runSync is the personal happy path: rescan → show plan → apply.
+// Conflict resolution is identical to apply (C1). Use -y for non-interactive
+// (still requires --strategy when conflicts exist and not a TTY).
+func runSync(cfg *config.Config, vl *vendorlist.List, args []string) {
+	tr := cfg.T()
+	// reject leftover flags we don't support on sync
+	for _, a := range args {
+		if a == "--help" || a == "-h" {
+			fmt.Print(tr.S("sync.help"))
+			return
+		}
+		if strings.HasPrefix(a, "-") {
+			fail(cfg, fmt.Errorf("%s", tr.S("sync.bad_flag", a)))
+		}
+	}
+
+	res, err := scan.Run(cfg, vl)
+	if err != nil {
+		fail(cfg, err)
+	}
+	p := plan.Build(cfg, res)
+
+	if cfg.JSON {
+		// machine mode: just apply (plan embedded in apply flow via result)
+		if _, err := apply.Run(cfg, p, os.Stdin); err != nil {
+			fail(cfg, err)
+		}
+		return
+	}
+
+	fmt.Println(tr.S("sync.banner"))
+	w := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
+	fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
+		tr.S("plan.col_type"), tr.S("plan.col_name"), tr.S("plan.col_tool"),
+		tr.S("plan.col_note"), tr.S("plan.col_source"))
+	for _, a := range p.Actions {
+		src := shortPath(a.SourcePath)
+		if a.Type == plan.ActionConflict {
+			src = tr.S("plan.candidates", len(a.Candidates))
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
+			tr.ActionLabel(string(a.Type)), a.Name, tr.ToolLabel(a.Tool), tr.NoteLabel(a.Note), src)
+	}
+	_ = w.Flush()
+	fmt.Println(tr.S("plan.summary", p.Summary.Migrate, p.Summary.Link, p.Summary.Skip, p.Summary.Conflict))
+	fmt.Println(tr.S("sync.plan_done"))
+
+	if p.Summary.Migrate == 0 && p.Summary.Link == 0 && p.Summary.Conflict == 0 {
+		fmt.Println(tr.S("sync.nothing"))
+		return
+	}
+
 	if _, err := apply.Run(cfg, p, os.Stdin); err != nil {
 		fail(cfg, err)
 	}

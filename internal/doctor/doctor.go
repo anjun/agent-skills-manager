@@ -3,11 +3,16 @@ package doctor
 import (
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 
 	"github.com/anj/agent-skills-manager/internal/config"
 	"github.com/anj/agent-skills-manager/internal/fsutil"
+	"github.com/anj/agent-skills-manager/internal/knownsource"
 	"github.com/anj/agent-skills-manager/internal/roots"
 	"github.com/anj/agent-skills-manager/internal/scan"
+	"github.com/anj/agent-skills-manager/internal/skill"
+	"github.com/anj/agent-skills-manager/internal/skilllock"
 	"github.com/anj/agent-skills-manager/internal/vendorlist"
 )
 
@@ -18,7 +23,8 @@ type Issue struct {
 	Message  string `json:"message"`
 }
 
-// Run checks broken symlinks and duplicate real copies.
+// Run checks broken symlinks, duplicate real copies, wire roots, and
+// U2 provenance discoverability (no network calls).
 func Run(cfg *config.Config, vl *vendorlist.List) ([]Issue, error) {
 	tr := cfg.T()
 	var issues []Issue
@@ -26,9 +32,25 @@ func Run(cfg *config.Config, vl *vendorlist.List) ([]Issue, error) {
 	if err != nil {
 		return nil, err
 	}
+	lockIdx := skilllock.LoadIndex()
+	seenSkill := map[string]bool{} // lower name → present on disk (non-vendor)
+
 	byName := map[string][]scan.Entry{}
 	for _, e := range res.Entries {
-		if e.Class == scan.ClassVendor || e.Class == scan.ClassProject {
+		if e.Class == scan.ClassVendor {
+			continue
+		}
+		key := strings.ToLower(e.Name)
+		seenSkill[key] = true
+		if e.Class == scan.ClassProject {
+			// project skills: only broken-link checks below if symlink
+			if e.Symlink {
+				if e.Target == "" {
+					issues = append(issues, Issue{"error", e.Path, tr.S("doctor.broken_no_target")})
+				} else if _, err := os.Stat(e.Target); err != nil {
+					issues = append(issues, Issue{"error", e.Path, tr.S("doctor.broken_target", e.Target)})
+				}
+			}
 			continue
 		}
 		byName[e.Name] = append(byName[e.Name], e)
@@ -50,7 +72,15 @@ func Run(cfg *config.Config, vl *vendorlist.List) ([]Issue, error) {
 			}
 		}
 		if reals > 1 {
-			issues = append(issues, Issue{"warn", name, tr.S("doctor.dup_reals", reals)})
+			// Prefer a real path so RelHome does not resolve the bare name against cwd.
+			p := name
+			for _, e := range list {
+				if !e.Symlink {
+					p = e.Path
+					break
+				}
+			}
+			issues = append(issues, Issue{"warn", p, tr.S("doctor.dup_reals", reals)})
 		}
 	}
 	// wire roots missing
@@ -63,7 +93,104 @@ func Run(cfg *config.Config, vl *vendorlist.List) ([]Issue, error) {
 	if _, err := os.Stat(cfg.AgentsSkills); err != nil {
 		issues = append(issues, Issue{"warn", cfg.AgentsSkills, tr.S("doctor.agents_missing")})
 	}
+
+	// U2: skill-lock entries with no on-disk skill
+	if lockIdx != nil {
+		var orphans []string
+		for name := range lockIdx.ByName {
+			if !seenSkill[strings.ToLower(name)] {
+				orphans = append(orphans, name)
+			}
+		}
+		sort.Strings(orphans)
+		for _, name := range orphans {
+			le, _ := lockIdx.Lookup(name)
+			msg := tr.S("doctor.lock_orphan", name, name)
+			path := "skill-lock:" + name
+			if le.LockPath != "" {
+				msg = tr.S("doctor.lock_orphan_at", name, fsutil.RelHome(le.LockPath), name)
+				path = le.LockPath + "#" + name
+			}
+			issues = append(issues, Issue{"warn", path, msg})
+		}
+	}
+
+	// U2: per-skill local provenance (no network) — one row per content path
+	seenPath := map[string]bool{}
+	for _, e := range res.Entries {
+		if e.Class != scan.ClassCanonical && e.Class != scan.ClassUser {
+			continue
+		}
+		contentPath := e.Path
+		if e.Symlink && e.Target != "" {
+			contentPath = e.Target
+		}
+		contentPath = fsutil.Abs(contentPath)
+		if seenPath[contentPath] {
+			continue
+		}
+		seenPath[contentPath] = true
+
+		hint := localProvenanceHint(e.Name, contentPath, lockIdx)
+		if hint == "" {
+			continue
+		}
+		issues = append(issues, Issue{"info", contentPath, hint})
+	}
+
 	_ = filepath.Separator
-	_ = fsutil.Home
 	return issues, nil
+}
+
+// localProvenanceHint returns an actionable message when updates cannot be checked.
+// Empty string means provenance is OK for outdated (git / skill-lock / known).
+func localProvenanceHint(name, contentPath string, lockIdx *skilllock.Index) string {
+	contentPath = fsutil.Abs(contentPath)
+	// git skill root
+	if root, ok := fsutil.GitWorkTreeRoot(contentPath); ok && root == contentPath {
+		return ""
+	}
+	// skill-lock
+	if lockIdx != nil {
+		if _, ok := lockIdx.Lookup(name); ok {
+			return ""
+		}
+	}
+	// knownsource
+	if _, ok := knownsource.Match(name, contentPath); ok {
+		return ""
+	}
+
+	// frontmatter source without lock
+	if sk, err := skill.Load(contentPath); err == nil && sk != nil {
+		src := frontmatterSource(sk)
+		if src != "" {
+			return "SKILL.md 声明了 source（" + src + "）但不在 skill-lock 中，无法对比上游。" +
+				" 建议：用 npx skills add 安装以写入 lock，或把目录保持为独立 git 仓。" +
+				" 不需要则: asm remove " + name
+		}
+		if ver, ok := sk.Frontmatter["version"].(string); ok && strings.TrimSpace(ver) != "" {
+			return "仅有 frontmatter version（" + strings.TrimSpace(ver) + "），无上游 URL，无法检查更新。" +
+				" 建议补充 git remote / skill-lock，或不需要则: asm remove " + name
+		}
+	}
+
+	return "无 provenance（手工安装）。无法用 asm outdated 检查更新。" +
+		" 可选：npx skills add … -g（写 skill-lock）、git clone 到技能目录、" +
+		"或 CLI 安装器技能加入 knownsource.Catalog。清理: asm remove " + name
+}
+
+func frontmatterSource(sk *skill.Skill) string {
+	if sk == nil || sk.Frontmatter == nil {
+		return ""
+	}
+	for _, k := range []string{"source", "repository", "repo", "url", "homepage"} {
+		if v, ok := sk.Frontmatter[k].(string); ok {
+			v = strings.TrimSpace(v)
+			if v != "" {
+				return v
+			}
+		}
+	}
+	return ""
 }

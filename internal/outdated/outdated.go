@@ -204,7 +204,7 @@ func checkOne(e scan.Entry, contentPath string, lockIdx *skilllock.Index, trees 
 				ent.Message = "HEAD matches origin/" + branch
 			} else {
 				ent.Status = StatusOutdated
-				ent.Message = "HEAD behind or diverged from origin/" + branch + " (check-only; no pull)"
+				ent.Message = "HEAD behind or diverged from origin/" + branch + "; update: asm outdated --update " + e.Name
 			}
 			return ent
 		}
@@ -241,14 +241,16 @@ func checkOne(e scan.Entry, contentPath string, lockIdx *skilllock.Index, trees 
 			ent.Provenance = ProvFrontmatter
 			ent.Remote = src
 			ent.Status = StatusUnknown
-			ent.Message = "source declared in SKILL.md; no skill-lock entry to compare"
+			ent.Message = "SKILL.md source=" + src + " but not in skill-lock (cannot compare). " +
+				"Tip: npx skills add <repo> -g, keep as git clone, or asm remove " + e.Name
 			return ent
 		}
 		if ver, ok := sk.Frontmatter["version"].(string); ok && strings.TrimSpace(ver) != "" {
 			ent.Provenance = ProvFrontmatter
 			ent.LocalRef = strings.TrimSpace(ver)
 			ent.Status = StatusUnknown
-			ent.Message = "version in frontmatter but no upstream URL"
+			ent.Message = "frontmatter version only (no upstream URL). " +
+				"Tip: add skill-lock / git remote, or asm remove " + e.Name
 			return ent
 		}
 	}
@@ -258,12 +260,15 @@ func checkOne(e scan.Entry, contentPath string, lockIdx *skilllock.Index, trees 
 	if lock := findProjectSkillsLock(contentPath); lock != "" {
 		ent.Provenance = ProvSkillsLock
 		ent.Status = StatusUnknown
-		ent.Message = "project lock at " + fsutil.RelHome(lock) + "; content-hash compare not implemented yet"
+		ent.Message = "project lock at " + fsutil.RelHome(lock) +
+			"; content-hash compare not implemented yet (global skill-lock / git / known only)"
 		return ent
 	}
 
 	ent.Status = StatusUnknown
-	ent.Message = "no provenance (manual install / not in skill-lock)"
+	ent.Message = "no provenance (manual install). " +
+		"Tip: npx skills add … -g (skill-lock), git clone skill dir, knownsource Catalog for CLI installers, " +
+		"or asm remove " + e.Name
 	return ent
 }
 
@@ -387,7 +392,8 @@ func checkSkillLockGitHub(ent Entry, le skilllock.Entry, trees *skilllock.TreeCa
 		// Path gone upstream (renamed/deleted) is actionable, not a hard error.
 		if strings.Contains(err.Error(), "skill path not found") {
 			ent.Status = StatusOutdated
-			ent.Message = "upstream path missing on " + le.Source + " (deleted or renamed); lock entry stale"
+			ent.Message = "upstream path missing on " + le.Source +
+				" (deleted or renamed); lock entry stale — clean: asm remove " + ent.Name + " -y"
 			return ent
 		}
 		ent.Status = StatusError
@@ -400,7 +406,8 @@ func checkSkillLockGitHub(ent Entry, le skilllock.Entry, trees *skilllock.TreeCa
 		ent.Message = "skill-lock hash matches " + le.Source + "@" + branch
 	} else {
 		ent.Status = StatusOutdated
-		ent.Message = "upstream folder changed on " + le.Source + "@" + branch + " (check-only; use npx skills update)"
+		ent.Message = "upstream folder changed on " + le.Source + "@" + branch +
+			"; update: asm outdated --update " + ent.Name
 	}
 	return ent
 }

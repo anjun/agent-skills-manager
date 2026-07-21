@@ -68,9 +68,11 @@ var zh = map[string]string{
 	"doctor.count":            "\n共 %d 个问题",
 	"doctor.broken_no_target": "损坏的符号链接（无目标）",
 	"doctor.broken_target":    "损坏的符号链接 → %s",
-	"doctor.dup_reals":        "%d 份用户实目录副本 — 请运行 plan/apply",
-	"doctor.wire_missing":     "接线根目录尚不存在（apply 时按需创建）",
+	"doctor.dup_reals":        "%d 份用户实目录副本 — 请运行 asm sync 或 plan/apply",
+	"doctor.wire_missing":     "接线根目录尚不存在（sync/apply 时按需创建）",
 	"doctor.agents_missing":   "真源目录 ~/.agents/skills 不存在",
+	"doctor.lock_orphan":    "skill-lock 列出 %s 但磁盘无此 skill — 清理: asm remove %s -y",
+	"doctor.lock_orphan_at": "skill-lock 列出 %s（文件 %s）但磁盘无此 skill — 清理: asm remove %s -y",
 
 	// apply
 	"apply.need_yes":          "非 TTY 环境拒绝执行 apply，请加 --yes",
@@ -154,18 +156,36 @@ var zh = map[string]string{
 	"upgrade.aborted":          "已取消更新",
 	"upgrade.done":             "已更新：%s → %s\n重新打开终端或再执行 asm version 确认。",
 	"upgrade.check_hint":       "执行 asm upgrade 进行在线更新。",
+	"sync.banner":    "── asm sync：重扫 → 预览 → 归口接线 ──",
+	"sync.plan_done": "以上为计划；接下来执行 apply（冲突规则与 apply 相同）。",
+	"sync.nothing":   "无需迁移或链接，已是最新接线。",
+	"sync.bad_flag":  "sync 不支持参数 %s（可用全局 -y / --strategy / --json）",
+	"sync.help": `asm sync — 一次完成归口接线（重扫 → plan → apply）
+
+用法:
+  asm sync [-y] [--strategy keep-agents|keep-newest|skip]
+
+  -y            跳过确认（非 TTY 必须）
+  --strategy    冲突策略（与 apply 相同；非 TTY 遇冲突时需要）
+
+说明:
+  等价于先 plan 再 apply。冲突交互与 apply 一致。
+  日常重装 Agent 后优先跑这条。
+`,
+
 	"main.usage": `agent-skills-manager (asm) %s — Agent Skills 归口与治理中枢
 
 用法：
-  asm scan | plan | apply | undo | doctor | outdated | remove | upgrade
+  asm scan | plan | apply | sync | undo | doctor | outdated | remove | upgrade
   agent-skills-manager <command>
 
 命令：
   scan                  发现并分类 skill
   plan [--out f.json]   预览归口/链接（不写盘）
   apply                 执行迁移与符号链接
+  sync                  重扫 → plan → apply（日常归口入口）
   undo [id|last]        回滚
-  doctor                健康检查
+  doctor                健康检查（含 provenance 提示）
   outdated [--update]   检查 skill 更新；--update 尝试自动更新
   remove <name...>      全局卸载指定 skill（别名 rm）
   upgrade [--check]     从 GitHub Releases 更新 asm 自身
@@ -250,9 +270,11 @@ var en = map[string]string{
 	"doctor.count":            "\n%d issue(s)",
 	"doctor.broken_no_target": "broken symlink (no target)",
 	"doctor.broken_target":    "broken symlink → %s",
-	"doctor.dup_reals":        "%d real (non-symlink) user copies — run plan/apply",
-	"doctor.wire_missing":     "wire root does not exist yet (will be created on apply if needed)",
+	"doctor.dup_reals":        "%d real (non-symlink) user copies — run asm sync or plan/apply",
+	"doctor.wire_missing":     "wire root does not exist yet (created on sync/apply if needed)",
 	"doctor.agents_missing":   "canonical agents skills dir missing",
+	"doctor.lock_orphan":    "skill-lock lists %s but skill not on disk — clean: asm remove %s -y",
+	"doctor.lock_orphan_at": "skill-lock lists %s (file %s) but skill not on disk — clean: asm remove %s -y",
 
 	"apply.need_yes":         "refusing to apply without --yes when not a TTY",
 	"apply.about":            "\nAbout to apply: migrate=%d  link=%d (skips omitted)",
@@ -332,18 +354,34 @@ Never removes vendor skills. Aliases: rm, uninstall
 	"upgrade.aborted":   "upgrade cancelled",
 	"upgrade.done":      "updated: %s → %s\nre-open the shell or run asm version to confirm.",
 	"upgrade.check_hint": "run: asm upgrade",
+	"sync.banner":    "── asm sync: rescan → plan → apply ──",
+	"sync.plan_done": "Plan above; applying next (same conflict rules as apply).",
+	"sync.nothing":   "Nothing to migrate or link; wiring already current.",
+	"sync.bad_flag":  "sync does not take %s (use global -y / --strategy / --json)",
+	"sync.help": `asm sync — one-shot unify (rescan → plan → apply)
+
+Usage:
+  asm sync [-y] [--strategy keep-agents|keep-newest|skip]
+
+  -y            skip confirmation (required non-TTY)
+  --strategy    conflict strategy (same as apply)
+
+After reinstalling an agent, prefer this command.
+`,
+
 	"main.usage": `agent-skills-manager (asm) %s — agent skills home & governance hub
 
 Usage:
-  asm scan | plan | apply | undo | doctor | outdated | remove | upgrade
+  asm scan | plan | apply | sync | undo | doctor | outdated | remove | upgrade
   agent-skills-manager <command>
 
 Commands:
   scan                  discover + classify
   plan [--out f.json]   preview migrate/link (no writes)
   apply                 migrate + symlink
+  sync                  rescan → plan → apply (daily unify entry)
   undo [id|last]        rollback
-  doctor                health check
+  doctor                health check (incl. provenance hints)
   outdated [--update]   check skill updates; --update applies where possible
   remove <name...>      uninstall skill globally (alias: rm)
   upgrade [--check]     self-update from GitHub Releases

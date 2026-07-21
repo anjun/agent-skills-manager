@@ -18,8 +18,9 @@ Complements [`npx skills`](https://github.com/vercel-labs/skills) (marketplace i
 | 8 | Rollback | Transaction log + `undo` |
 | 9 | Product name | **agent-skills-manager** / **asm** |
 | 10 | Product scope | **归口 + 治理中枢** — not full marketplace CLI |
-| 11 | Skill updates | **A**: proven provenance only; **check-only** (no git pull / no apply yet) |
+| 11 | Skill updates | proven provenance only; `outdated` check + optional `--update` (skill-lock / git / knownsource Catalog) |
 | 12 | Tool self-update | GitHub Releases (`asm upgrade`); default repo `anjun/agent-skills-manager`; private needs token |
+| 13 | Daily unify entry | `asm sync` = rescan → plan → apply; conflicts same as apply; personal primary tools Claude/Cursor/Grok/Codex |
 
 ## Classification
 
@@ -39,22 +40,24 @@ Each discovered skill directory (folder containing `SKILL.md`):
 asm scan                 # discover + classify
 asm plan                 # proposed moves/symlinks (no writes)
 asm apply [--yes] [--strategy ...]
+asm sync                 # rescan → plan → apply (daily entry)
 asm undo [id|last]
-asm doctor
-asm outdated [--all]     # check-only skill update report
+asm doctor               # health + local provenance / stale-lock hints
+asm outdated [--all] [--update]
 asm upgrade [--check]    # self-update from GitHub Releases
 ```
 
-### outdated (check-only)
+### outdated
 
-- Scope: canonical + user + project (not vendor); de-dupe by content path.
+- Scope: canonical + user + project (not vendor); de-dupe by content path then skill name.
 - Provenance order:
-  1. skill dir is its own git repo with `origin` → compare HEAD to origin (no pull)
-  2. `~/.agents/.skill-lock.json` (or `$XDG_STATE_HOME/skills/.skill-lock.json`) GitHub entry with `skillFolderHash` + `skillPath` → compare via GitHub Trees API (batch per repo; token from `GITHUB_TOKEN` / `GH_TOKEN` / `gh auth token` on rate limit)
-  3. frontmatter `source`/`version` → `unknown`
-  4. project `skills-lock.json` nearby → `unknown` (content-hash compare not yet)
-  5. no provenance → `unknown` (hidden unless `--all`)
-- Updates still via `npx skills update`; asm does not rewrite lock or reinstall.
+  1. skill dir is its own git repo with `origin` → compare HEAD to origin
+  2. `~/.agents/.skill-lock.json` GitHub entry → GitHub Trees API
+  3. `knownsource.Catalog` fingerprint (e.g. dws) → release or HEAD tree
+  4. frontmatter `source`/`version` → `unknown` (actionable tip)
+  5. project `skills-lock.json` nearby → `unknown`
+  6. no provenance → `unknown` (hidden unless `--all`)
+- `--update`: skill-lock → `npx skills update`; known → Catalog `UpdateSpec`; git → `git pull --ff-only`.
 
 ## Layout
 

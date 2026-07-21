@@ -57,18 +57,26 @@ push `main` 只跑测试，**不发版**。
 ## 快速开始
 
 ```bash
-asm scan
-asm plan
-asm apply
+# 日常归口（推荐）
+asm sync                          # 重扫 → 预览 → 归口接线（冲突规则同 apply）
+asm sync -y                       # 非交互执行（遇冲突需加 --strategy）
+
+# 分步（terraform 式：先看再改）
+asm scan                          # 扫描并分类各工具下的 skill（不写盘）
+asm plan                          # 预览将如何归口到 ~/.agents/skills 并接线（不写盘）
+asm apply                         # 执行归口：迁移内容 + 各工具目录符号链接
+asm undo last                     # 回滚最近一次 apply
+
+# 更新 / 卸载 / 健康
 asm outdated                      # 检查 skill 是否有上游更新
+asm outdated --all                # 含 unknown，并提示如何纳入更新
 asm outdated --update             # 检查并尝试自动更新
 asm outdated --update -y          # 更新时跳过确认
 asm outdated --update dws         # 只更新指定 skill
 asm remove write-a-skill          # 全局卸载指定 skill（真源 + 各工具链接）
 asm remove foo bar -y             # 多个，跳过确认
-asm doctor
-asm upgrade --check               # 更新 asm 自身
-asm undo last
+asm doctor                        # 健康检查（断链、缺真源、无 provenance、陈旧 lock）
+asm upgrade --check               # 检查 asm 自身是否有新版本
 ```
 
 ### `outdated --update` 会做什么
