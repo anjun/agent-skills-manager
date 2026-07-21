@@ -1,0 +1,24 @@
+# Build artifacts
+/bin/
+/agent-skills-manager
+/asm
+*.exe
+*.test
+*.out
+
+# Go
+/vendor/
+
+# OS / editor
+.DS_Store
+*.swp
+*~
+.idea/
+.vscode/
+*.iml
+
+# Local env / secrets
+.env
+.env.*
+*.pem
+*.key

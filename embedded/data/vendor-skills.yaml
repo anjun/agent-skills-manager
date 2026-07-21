@@ -1,0 +1,66 @@
+# Vendor / tool-owned skill rules.
+# Path globs always classify as vendor.
+# Per-tool name lists are static denylists for tools WITHOUT a live probe.
+#
+# Grok: preferred source of truth is `grok inspect --json` (source.type=bundled).
+# The grok names below are FALLBACK only when the probe fails or --no-probe is set.
+
+path_globs:
+  - "~/.grok/bundled/skills/**"
+  - "~/.codex/skills/.system/**"
+  - "~/.codex/vendor/**"
+  - "~/.codex/vendor_imports/**"
+  - "~/.gemini/config/plugins/**/skills/**"
+  - "~/.gemini/antigravity*/**"
+  - "~/.gemini/antigravity-backup/**"
+  - "**/Application Support/**/skills/**"
+  - "**/Contents/Resources/**/skills/**"
+
+names_by_tool:
+  # FALLBACK when grok inspect is unavailable (see probe package).
+  grok:
+    - help
+    - create-skill
+    - imagine
+    - check-work
+    - code-review
+    - build-with-ai
+    - design
+    - docx
+    - pptx
+    - execute-plan
+    - game-animation-frames
+    - game-asset-core
+    - game-character-consistency
+    - game-tilesets
+    - game-ui-icons
+    - implement
+    - pr-babysit
+    - resume-claude
+    - resume-codex
+    - resume-cursor
+    - review
+  claude:
+    # Claude Code rarely installs named defaults into ~/.claude/skills;
+    # extend as the community finds them.
+    []
+  cursor:
+    - shell
+    - canvas
+    - statusline
+  codex:
+    # Shipped under ~/.codex/skills/.system/ (also covered by path_globs)
+    - skill-creator
+    - skill-installer
+    - plan
+    - discovery
+  gemini:
+    # Extension / framework meta skills often land under config/skills.
+    - using-superpowers
+    - find-skills
+
+# Always vendor if name matches (any tool root).
+names_global:
+  - help
+  - create-skill
+  - imagine
