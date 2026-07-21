@@ -109,6 +109,15 @@ State file: `~/.local/state/agent-skills-manager/skill-gates.json`
 
 UI language: default Chinese; use `--en` / `--zh` or `ASM_LANG=en`.
 
-## License
+## License & commercial use
 
-MIT
+This project is licensed under the [MIT License](./LICENSE) (Copyright © 2026 [anjun](https://github.com/anjun)).
+
+Personal use, learning, evaluation, and non-profit use are **free**.  
+**Commercial use** (including SaaS, client delivery, white-label, redistribution, embedding in closed-source products, and training-data use) is **also free under MIT**. You must retain the copyright notice and license text in distributions.
+
+For commercial support, custom development, or partnership: open a [GitHub Issue](https://github.com/anjun/agent-skills-manager/issues) with the subject “Commercial licensing”, or contact the maintainer via the repository.
+
+[Docs](./README.en.md) · [Issues](https://github.com/anjun/agent-skills-manager/issues) · [License](./LICENSE)
+
+Made by [anjun](https://github.com/anjun)

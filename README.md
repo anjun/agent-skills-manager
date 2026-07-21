@@ -109,6 +109,15 @@ asm gates                         # 列出关闭状态
 
 界面语言默认中文；可用 `--en` / `--zh` 或环境变量 `ASM_LANG=en`。
 
-## 许可证
+## 许可与商业使用
 
-MIT
+本项目采用 [MIT License](./LICENSE)（版权 © 2026 [anjun](https://github.com/anjun)）。
+
+个人使用、学习、评估、非营利使用**免费**。  
+商业使用（含 SaaS、客户交付、白标、再分发、闭源产品集成、训练数据用途等）在 MIT 下**同样免费允许**，须在分发物中保留版权声明与许可全文。
+
+商业支持、定制开发或合作：在 [Issues](https://github.com/anjun/agent-skills-manager/issues) 开单并注明「Commercial licensing / 商业合作」，或直接联系仓库维护者。
+
+[文档](./README.md) · [Issues](https://github.com/anjun/agent-skills-manager/issues) · [License](./LICENSE)
+
+Made by [anjun](https://github.com/anjun)
