@@ -132,6 +132,22 @@ var zh = map[string]string{
   git skill   → git pull --ff-only
   上游已删    → 跳过
 `,
+	"remove.need_name": "请指定要卸载的 skill 名称，例如: asm remove write-a-skill",
+	"remove.done":      "卸载完成：删除=%d  失败=%d  更新 lock=%d",
+	"remove.help": `asm remove — 全局卸载指定 skill
+
+用法:
+  asm remove <name> [name2...] [-y] [--keep-lock] [--project]
+
+  -y            跳过确认
+  --keep-lock   不修改 ~/.agents/.skill-lock.json
+  --project     同时删除项目内 (project) skill（默认只动全局）
+
+说明:
+  删除各工具全局目录与 ~/.agents/skills 下的同名目录/符号链接。
+  永不删除 vendor（工具内置）skill。
+  别名: rm, uninstall
+`,
 	"upgrade.current":          "asm 已是最新版本 %s",
 	"upgrade.available":        "发现新版本：%s → %s\n  资源：%s\n  仓库：%s",
 	"upgrade.confirm":          "是否下载并替换当前二进制？[y/N] ",
@@ -141,7 +157,7 @@ var zh = map[string]string{
 	"main.usage": `agent-skills-manager (asm) %s — Agent Skills 归口与治理中枢
 
 用法：
-  asm scan | plan | apply | undo | doctor | outdated | upgrade
+  asm scan | plan | apply | undo | doctor | outdated | remove | upgrade
   agent-skills-manager <command>
 
 命令：
@@ -151,6 +167,7 @@ var zh = map[string]string{
   undo [id|last]        回滚
   doctor                健康检查
   outdated [--update]   检查 skill 更新；--update 尝试自动更新
+  remove <name...>      全局卸载指定 skill（别名 rm）
   upgrade [--check]     从 GitHub Releases 更新 asm 自身
 
 参数：
@@ -295,6 +312,20 @@ Routes:
   git skill   → git pull --ff-only
   deleted     → skip
 `,
+	"remove.need_name": "specify skill name(s), e.g. asm remove write-a-skill",
+	"remove.done":      "remove done: deleted=%d  failed=%d  lock_updated=%d",
+	"remove.help": `asm remove — uninstall skill(s) from global roots
+
+Usage:
+  asm remove <name> [name2...] [-y] [--keep-lock] [--project]
+
+  -y            skip confirmation
+  --keep-lock   do not edit ~/.agents/.skill-lock.json
+  --project     also remove project-class skills (default: global only)
+
+Removes matching dirs/symlinks under tool skill roots and ~/.agents/skills.
+Never removes vendor skills. Aliases: rm, uninstall
+`,
 	"upgrade.current":   "asm is up to date (%s)",
 	"upgrade.available": "update available: %s → %s\n  asset: %s\n  repo: %s",
 	"upgrade.confirm":   "Download and replace the current binary? [y/N] ",
@@ -304,7 +335,7 @@ Routes:
 	"main.usage": `agent-skills-manager (asm) %s — agent skills home & governance hub
 
 Usage:
-  asm scan | plan | apply | undo | doctor | outdated | upgrade
+  asm scan | plan | apply | undo | doctor | outdated | remove | upgrade
   agent-skills-manager <command>
 
 Commands:
@@ -314,6 +345,7 @@ Commands:
   undo [id|last]        rollback
   doctor                health check
   outdated [--update]   check skill updates; --update applies where possible
+  remove <name...>      uninstall skill globally (alias: rm)
   upgrade [--check]     self-update from GitHub Releases
 
 Flags:

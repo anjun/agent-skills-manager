@@ -3,6 +3,7 @@ package skilllock
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -160,4 +161,69 @@ func globalLockCandidates() []string {
 		out = append(out, filepath.Join(home, ".agents", ".skill-lock.json"))
 	}
 	return out
+}
+
+// RemoveSkills deletes skill names from global .skill-lock.json file(s).
+// Returns paths that were modified.
+func RemoveSkills(names []string) (modified []string, err error) {
+	want := map[string]bool{}
+	for _, n := range names {
+		n = strings.TrimSpace(strings.ToLower(n))
+		if n != "" {
+			want[n] = true
+		}
+	}
+	if len(want) == 0 {
+		return nil, nil
+	}
+	for _, p := range globalLockCandidates() {
+		f, err := LoadFile(p)
+		if err != nil {
+			continue
+		}
+		changed := false
+		for name := range f.Skills {
+			if want[strings.ToLower(name)] {
+				delete(f.Skills, name)
+				changed = true
+			}
+		}
+		if !changed {
+			continue
+		}
+		if err := SaveFile(f); err != nil {
+			return modified, err
+		}
+		modified = append(modified, p)
+	}
+	return modified, nil
+}
+
+// SaveFile writes a lock File back to disk (pretty JSON).
+func SaveFile(f *File) error {
+	if f == nil || f.Path == "" {
+		return fmt.Errorf("skilllock: empty file path")
+	}
+	// Keep version at least 3 for global format
+	if f.Version < 3 {
+		f.Version = 3
+	}
+	type outFile struct {
+		Version int                  `json:"version"`
+		Skills  map[string]rawEntry  `json:"skills"`
+	}
+	// preserve unknown top-level fields by re-read merge? keep simple: only version+skills
+	// re-read original to preserve dismissed / lastSelectedAgents
+	raw := map[string]any{}
+	if b, err := os.ReadFile(f.Path); err == nil {
+		_ = json.Unmarshal(b, &raw)
+	}
+	raw["version"] = f.Version
+	raw["skills"] = f.Skills
+	b, err := json.MarshalIndent(raw, "", "  ")
+	if err != nil {
+		return err
+	}
+	b = append(b, '\n')
+	return os.WriteFile(f.Path, b, 0o644)
 }

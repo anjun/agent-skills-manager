@@ -19,6 +19,7 @@ import (
 	"github.com/anj/agent-skills-manager/internal/i18n"
 	"github.com/anj/agent-skills-manager/internal/outdated"
 	"github.com/anj/agent-skills-manager/internal/plan"
+	"github.com/anj/agent-skills-manager/internal/remove"
 	"github.com/anj/agent-skills-manager/internal/scan"
 	"github.com/anj/agent-skills-manager/internal/selfupdate"
 	"github.com/anj/agent-skills-manager/internal/vendorlist"
@@ -69,6 +70,8 @@ func main() {
 		runDoctor(cfg, vl)
 	case "outdated", "check-update", "check-updates":
 		runOutdated(cfg, vl, args)
+	case "remove", "rm", "uninstall":
+		runRemove(cfg, vl, args)
 	case "upgrade", "self-update", "selfupdate":
 		runUpgrade(cfg, args)
 	default:
@@ -460,6 +463,58 @@ func statusLabel(tr *i18n.T, s outdated.Status) string {
 		return tr.S("outdated.status_skipped")
 	default:
 		return string(s)
+	}
+}
+
+func runRemove(cfg *config.Config, vl *vendorlist.List, args []string) {
+	tr := cfg.T()
+	opt := remove.Options{Yes: cfg.Yes, Stdin: os.Stdin, Stdout: os.Stdout}
+	var names []string
+	for _, a := range args {
+		switch a {
+		case "--yes", "-y":
+			opt.Yes = true
+		case "--keep-lock":
+			opt.KeepLock = true
+		case "--project":
+			opt.IncludeProject = true
+		case "--help", "-h":
+			fmt.Print(tr.S("remove.help"))
+			return
+		default:
+			if strings.HasPrefix(a, "-") {
+				fail(cfg, fmt.Errorf("unknown remove flag: %s", a))
+			}
+			names = append(names, a)
+		}
+	}
+	if len(names) == 0 {
+		fail(cfg, fmt.Errorf("%s", tr.S("remove.need_name")))
+	}
+	opt.Names = names
+
+	res, err := remove.Run(cfg, vl, opt)
+	if err != nil {
+		fail(cfg, err)
+	}
+	if cfg.JSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(res)
+		return
+	}
+	if res.Aborted {
+		return
+	}
+	fmt.Println(tr.S("remove.done", len(res.Removed), len(res.Failed), len(res.LockModified)))
+	for _, p := range res.Removed {
+		fmt.Printf("  - %s\n", fsutil.RelHome(p))
+	}
+	for _, f := range res.Failed {
+		fmt.Printf("  ! %s\n", f)
+	}
+	for _, p := range res.LockModified {
+		fmt.Printf("  lock: %s\n", fsutil.RelHome(p))
 	}
 }
 

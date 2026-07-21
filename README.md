@@ -64,6 +64,8 @@ asm outdated                      # 检查 skill 是否有上游更新
 asm outdated --update             # 检查并尝试自动更新
 asm outdated --update -y          # 更新时跳过确认
 asm outdated --update dws         # 只更新指定 skill
+asm remove write-a-skill          # 全局卸载指定 skill（真源 + 各工具链接）
+asm remove foo bar -y             # 多个，跳过确认
 asm doctor
 asm upgrade --check               # 更新 asm 自身
 asm undo last
