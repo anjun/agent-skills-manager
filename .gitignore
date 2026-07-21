@@ -6,6 +6,8 @@
 *.exe
 *.test
 *.out
+.release-version
+
 
 # Go
 /vendor/

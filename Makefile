@@ -6,11 +6,10 @@
 #   make release VERSION=0.3.2   # 显式指定版本
 #   make summary / make tags / make test / make build
 
-.PHONY: help test build summary tags release resolve-version check-clean next-version
+.PHONY: help test build summary tags release check-clean
 
 VERSION ?=
 BUMP    ?= patch
-TAG      =
 
 help:
 	@echo "Targets:"
@@ -60,9 +59,23 @@ summary:
 tags:
 	@git tag -l 'v*' --sort=-v:refname | head -20
 
-# 计算下一版本：VERSION 优先，否则按 BUMP 从 LAST_TAG 递增
-resolve-version:
+check-clean:
+	@# 忽略历史遗留的临时文件
+	@rm -f .release-version
+	@if [ -n "$$(git status --porcelain)" ]; then \
+		echo "错误: 工作区不干净，请先 commit 或 stash" >&2; \
+		git status -sb; \
+		exit 1; \
+	fi
+	@branch=$$(git rev-parse --abbrev-ref HEAD); \
+	if [ "$$branch" != "main" ] && [ "$$branch" != "master" ]; then \
+		echo "警告: 当前分支是 $$branch（通常应在 main 上打 tag）" >&2; \
+	fi
+
+# 一键：干净检查 → 解析版本（不写盘）→ 总结 → 打 tag → push → CI Release
+release: check-clean
 	@set -e; \
+	rm -f .release-version; \
 	if [ -n "$(VERSION)" ]; then \
 		RAW="$(VERSION)"; \
 		RAW="$${RAW#v}"; \
@@ -86,30 +99,28 @@ resolve-version:
 	echo "$$RAW" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$$' || { \
 		echo "错误: 版本格式应为 x.y.z，得到: $$RAW" >&2; exit 2; \
 	}; \
-	echo "$$RAW" > .release-version
-	@echo "→ 将发布: v$$(cat .release-version)"
-
-check-clean:
-	@if [ -n "$$(git status --porcelain | grep -v '^.release-version$$' || true)" ]; then \
-		echo "错误: 工作区不干净，请先 commit 或 stash" >&2; \
-		git status -sb; \
-		exit 1; \
-	fi
-	@branch=$$(git rev-parse --abbrev-ref HEAD); \
-	if [ "$$branch" != "main" ] && [ "$$branch" != "master" ]; then \
-		echo "警告: 当前分支是 $$branch（通常应在 main 上打 tag）" >&2; \
-	fi
-
-# 一键：解析版本 → 总结 → 打 tag → push → CI Release
-release: resolve-version check-clean summary
-	@RAW=$$(cat .release-version); TAG="v$$RAW"; rm -f .release-version; \
+	TAG="v$$RAW"; \
+	echo "→ 将发布: $$TAG"; \
+	echo ""; \
+	echo "=========================================="; \
+	echo "  分支: $$(git rev-parse --abbrev-ref HEAD)"; \
+	echo "  HEAD: $$(git rev-parse --short HEAD)"; \
+	echo "  上一正式 tag: $(or $(LAST_TAG),（无）)"; \
+	echo "=========================================="; \
+	if [ -n "$(LAST_TAG)" ]; then \
+		echo ""; \
+		echo "变更范围: $(LAST_TAG)..HEAD"; \
+		echo "------------------------------------------"; \
+		git log --oneline --no-decorate "$(LAST_TAG)..HEAD" || true; \
+		echo "------------------------------------------"; \
+		git diff --stat "$(LAST_TAG)..HEAD" || true; \
+		if [ -z "$$(git log $(LAST_TAG)..HEAD --oneline 2>/dev/null)" ]; then \
+			echo "警告: 自上一正式 tag 以来没有新 commit" >&2; \
+		fi; \
+	fi; \
 	if git rev-parse "$$TAG" >/dev/null 2>&1; then \
 		echo "错误: tag $$TAG 已存在" >&2; \
 		exit 1; \
-	fi; \
-	if [ -z "$$(git log $$(git tag -l 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$$' | head -1)..HEAD --oneline 2>/dev/null)" ] \
-	   && [ -n "$$(git tag -l 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$$' | head -1)" ]; then \
-		echo "警告: 自上一正式 tag 以来没有新 commit" >&2; \
 	fi; \
 	echo ""; \
 	echo "将创建并推送: $$TAG"; \
