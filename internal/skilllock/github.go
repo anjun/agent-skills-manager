@@ -210,6 +210,39 @@ func (c *TreeCache) FetchRepoTree(ctx context.Context, ownerRepo, ref string) (*
 	return c.fetchRepoTree(ctx, ownerRepo, ref)
 }
 
+// FetchLatestReleaseTag returns the latest non-draft release tag (e.g. "v1.0.52").
+func FetchLatestReleaseTag(ctx context.Context, ownerRepo string) (string, error) {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", ownerRepo)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", userAgent)
+	if t := githubToken(); t != "" {
+		req.Header.Set("Authorization", "Bearer "+t)
+	}
+	resp, err := HTTPClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("releases/latest HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	var raw struct {
+		TagName string `json:"tag_name"`
+	}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(raw.TagName) == "" {
+		return "", fmt.Errorf("empty tag_name for %s", ownerRepo)
+	}
+	return raw.TagName, nil
+}
+
 // BlobsUnder returns blob path→sha under folder (inclusive prefix).
 // folder is e.g. "skills/mono"; paths are full repo paths.
 func (t *RepoTree) BlobsUnder(folder string) map[string]string {

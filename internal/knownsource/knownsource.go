@@ -22,6 +22,9 @@ type Source struct {
 	SkillPath string
 	// SourceURL optional clone URL for display.
 	SourceURL string
+	// PreferRelease compares against GitHub latest release tag instead of default branch HEAD.
+	// Use for products where installers ship release-bundled skills (e.g. dws).
+	PreferRelease bool
 	// Detect returns true if contentPath looks like this known skill.
 	Detect func(contentPath string) bool
 }
@@ -29,11 +32,12 @@ type Source struct {
 // Catalog is the built-in known-source list (v1: dws only).
 var Catalog = []Source{
 	{
-		Name:      "dws",
-		OwnerRepo: "DingTalk-Real-AI/dingtalk-workspace-cli",
-		SkillPath: "skills/mono/SKILL.md",
-		SourceURL: "https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli",
-		Detect:    detectDWS,
+		Name:          "dws",
+		OwnerRepo:     "DingTalk-Real-AI/dingtalk-workspace-cli",
+		SkillPath:     "skills/mono/SKILL.md",
+		SourceURL:     "https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli",
+		PreferRelease: true, // dws skill setup / upgrade install release embeds, not main HEAD
+		Detect:        detectDWS,
 	},
 }
 

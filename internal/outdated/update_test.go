@@ -40,33 +40,41 @@ func TestApplyUpdatesSkillLockAndSkipDeleted(t *testing.T) {
 	}
 }
 
-func TestApplyUpdatesDWS(t *testing.T) {
+func TestApplyUpdatesDWSOnce(t *testing.T) {
 	report := &Result{
 		Entries: []Entry{
-			{Name: "dws", Status: StatusOutdated, Provenance: ProvKnown,
+			{Name: "dws", Status: StatusOutdated, Provenance: ProvKnown, Path: "/a/dws",
+				Remote: "https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli"},
+			{Name: "dws", Status: StatusOutdated, Provenance: ProvKnown, Path: "/b/dws",
+				Remote: "https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli"},
+			{Name: "dws", Status: StatusOutdated, Provenance: ProvKnown, Path: "/c/dws",
 				Remote: "https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli"},
 		},
 	}
-	var cmds []string
+	var nSetup, nUpgrade int
 	ur := ApplyUpdates(report, UpdateOptions{
 		Yes:    true,
 		Stdout: &bytes.Buffer{},
 		RunCmd: func(dir, name string, args ...string) (string, error) {
-			cmds = append(cmds, name+" "+strings.Join(args, " "))
+			line := name + " " + strings.Join(args, " ")
+			if strings.Contains(line, "skill setup") {
+				nSetup++
+			}
+			if strings.Contains(line, "upgrade") {
+				nUpgrade++
+			}
 			return "ok", nil
 		},
 	})
-	// LookPath for dws may or may not find real binary; if found, skill setup is called
+	// LookPath for dws may skip if missing
 	if len(ur.Items) != 1 {
-		t.Fatalf("%+v", ur.Items)
+		t.Fatalf("want 1 dws update item, got %+v", ur.Items)
 	}
-	it := ur.Items[0]
-	if it.Action != "dws" {
-		t.Fatalf("action=%s", it.Action)
+	if ur.Items[0].Skipped {
+		t.Skip("dws not on PATH in this environment")
 	}
-	// either setup ran, or skip if no dws
-	if !it.OK && !it.Skipped {
-		t.Fatalf("item=%+v cmds=%v", it, cmds)
+	if nSetup != 1 || nUpgrade != 1 {
+		t.Fatalf("setup=%d upgrade=%d (want 1 each)", nSetup, nUpgrade)
 	}
 }
 

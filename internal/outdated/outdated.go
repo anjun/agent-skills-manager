@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -83,10 +84,16 @@ func Run(cfg *config.Config, vl *vendorlist.List) (*Result, error) {
 		return nil, err
 	}
 	out := &Result{}
-	seen := map[string]bool{} // content path de-dupe
+	seenPath := map[string]bool{} // content path de-dupe
+	// name → best entry (prefer canonical / agents path). Multiple real copies
+	// of the same skill (e.g. dws skill setup writes dirs into every agent home)
+	// must not produce N outdated rows or N update runs.
+	byName := map[string]Entry{}
+	nameRank := map[string]int{}
 
 	lockIdx := skilllock.LoadIndex()
 	treeCache := skilllock.NewTreeCache()
+	agentsAbs := fsutil.Abs(cfg.AgentsSkills)
 
 	for _, e := range res.Entries {
 		switch e.Class {
@@ -103,13 +110,33 @@ func Run(cfg *config.Config, vl *vendorlist.List) (*Result, error) {
 			contentPath = e.Target
 		}
 		contentPath = fsutil.Abs(contentPath)
-		if seen[contentPath] {
+		if seenPath[contentPath] {
 			continue
 		}
-		seen[contentPath] = true
+		seenPath[contentPath] = true
 
 		ent := checkOne(e, contentPath, lockIdx, treeCache)
-		out.Entries = append(out.Entries, ent)
+		key := strings.ToLower(ent.Name)
+		rank := entryPreferRank(ent, agentsAbs)
+		if prev, ok := byName[key]; ok {
+			if rank >= nameRank[key] {
+				continue // keep existing better/equal
+			}
+			// replace with better path; status re-check already done on this ent
+			_ = prev
+		}
+		byName[key] = ent
+		nameRank[key] = rank
+	}
+
+	// stable order by name
+	names := make([]string, 0, len(byName))
+	for n := range byName {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		out.Entries = append(out.Entries, byName[n])
 	}
 
 	for _, ent := range out.Entries {
@@ -128,6 +155,18 @@ func Run(cfg *config.Config, vl *vendorlist.List) (*Result, error) {
 		}
 	}
 	return out, nil
+}
+
+// entryPreferRank: lower is better.
+func entryPreferRank(e Entry, agentsAbs string) int {
+	p := fsutil.Abs(e.Path)
+	if e.Class == scan.ClassCanonical || strings.HasPrefix(p, agentsAbs+string(filepath.Separator)) || p == agentsAbs {
+		return 0
+	}
+	if e.Class == scan.ClassUser {
+		return 1
+	}
+	return 2
 }
 
 func checkOne(e scan.Entry, contentPath string, lockIdx *skilllock.Index, trees *skilllock.TreeCache) Entry {
@@ -242,18 +281,31 @@ func checkKnownSource(ent Entry, contentPath string, ks knownsource.Source, tree
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	tree, err := trees.FetchRepoTree(ctx, ks.OwnerRepo, "")
+	// dws (and similar) ship skills with CLI releases — compare to latest release, not main HEAD.
+	ref := ""
+	refLabel := "HEAD"
+	if ks.PreferRelease {
+		if tag, err := skilllock.FetchLatestReleaseTag(ctx, ks.OwnerRepo); err == nil && tag != "" {
+			ref = tag
+			refLabel = tag
+		}
+	}
+
+	tree, err := trees.FetchRepoTree(ctx, ks.OwnerRepo, ref)
 	if err != nil {
 		ent.Status = StatusError
 		ent.Message = err.Error()
 		return ent
+	}
+	if refLabel == "HEAD" && tree.Branch != "" {
+		refLabel = tree.Branch
 	}
 
 	folder := ks.FolderPath()
 	remoteBlobs := tree.BlobsUnder(folder)
 	if len(remoteBlobs) == 0 {
 		ent.Status = StatusError
-		ent.Message = "no blobs under " + folder + " on " + ks.OwnerRepo + "@" + tree.Branch
+		ent.Message = "no blobs under " + folder + " on " + ks.OwnerRepo + "@" + refLabel
 		return ent
 	}
 
@@ -307,12 +359,16 @@ func checkKnownSource(ent Entry, contentPath string, ks knownsource.Source, tree
 
 	if mismatched == 0 {
 		ent.Status = StatusCurrent
-		ent.Message = fmt.Sprintf("known source %s@%s (%d files match)", ks.OwnerRepo, tree.Branch, checked)
+		ent.Message = fmt.Sprintf("known source %s@%s (%d files match)", ks.OwnerRepo, refLabel, checked)
 		return ent
 	}
+	hint := "update via dws upgrade -y then dws skill setup --mode mono --yes"
+	if !ks.PreferRelease {
+		hint = "update via upstream installer"
+	}
 	ent.Status = StatusOutdated
-	ent.Message = fmt.Sprintf("known source %s@%s: %d/%d files differ (e.g. %s); update via dws upgrade or install-skills.sh",
-		ks.OwnerRepo, tree.Branch, mismatched, checked+mismatched, firstPath)
+	ent.Message = fmt.Sprintf("known source %s@%s: %d/%d files differ (e.g. %s); %s",
+		ks.OwnerRepo, refLabel, mismatched, checked+mismatched, firstPath, hint)
 	return ent
 }
 

@@ -102,20 +102,34 @@ func ApplyUpdates(report *Result, opt UpdateOptions) *UpdateResult {
 
 	var (
 		lockNames []string
+		lockSeen  = map[string]bool{}
 		gitOnes   []Entry
-		dwsOnes   []Entry
+		gitSeen   = map[string]bool{}
+		dwsOnce   *Entry // at most one dws skill-setup for the whole machine
 		skips     []Entry
 	)
 	for _, e := range targets {
+		key := strings.ToLower(e.Name)
 		switch {
 		case isDeletedUpstream(e):
 			skips = append(skips, e)
 		case e.Provenance == ProvSkillLock:
+			if lockSeen[key] {
+				continue
+			}
+			lockSeen[key] = true
 			lockNames = append(lockNames, e.Name)
 		case e.Provenance == ProvGit:
+			if gitSeen[key] {
+				continue
+			}
+			gitSeen[key] = true
 			gitOnes = append(gitOnes, e)
 		case e.Provenance == ProvKnown && isDWS(e):
-			dwsOnes = append(dwsOnes, e)
+			if dwsOnce == nil {
+				cp := e
+				dwsOnce = &cp
+			}
 		default:
 			skips = append(skips, e)
 		}
@@ -127,8 +141,8 @@ func ApplyUpdates(report *Result, opt UpdateOptions) *UpdateResult {
 	for _, e := range gitOnes {
 		out.Items = append(out.Items, updateGit(e, opt))
 	}
-	for _, e := range dwsOnes {
-		out.Items = append(out.Items, updateDWS(e, opt))
+	if dwsOnce != nil {
+		out.Items = append(out.Items, updateDWS(*dwsOnce, opt))
 	}
 	for _, e := range skips {
 		msg := e.Message
@@ -231,21 +245,21 @@ func updateDWS(e Entry, opt UpdateOptions) UpdateItem {
 		it.Message = "未找到 dws 命令。可: curl -fsSL https://raw.githubusercontent.com/DingTalk-Real-AI/dingtalk-workspace-cli/main/scripts/install-skills.sh | DWS_SKILLS_ROOT=$HOME sh"
 		return it
 	}
-	// Re-emit mono skill from embedded sources (works when CLI already latest).
+	// 1) upgrade CLI (pulls matching skill packages from GitHub Releases)
+	fmt.Fprintln(opt.Stdout, "→ dws upgrade -y")
+	if _, err := opt.RunCmd("", "dws", "upgrade", "-y"); err != nil {
+		// still try skill setup from current embed
+		fmt.Fprintln(opt.Stdout, "  upgrade 失败，继续 skill setup:", err)
+	}
+	// 2) re-emit mono skill once to all agent homes (single run)
 	fmt.Fprintln(opt.Stdout, "→ dws skill setup --mode mono --target all --yes")
 	if _, err := opt.RunCmd("", "dws", "skill", "setup", "--mode", "mono", "--target", "all", "--yes"); err != nil {
-		fmt.Fprintln(opt.Stdout, "  skill setup 失败，尝试 dws upgrade -y")
-		if _, err2 := opt.RunCmd("", "dws", "upgrade", "-y"); err2 != nil {
-			it.OK = false
-			it.Message = err2.Error()
-			return it
-		}
-		it.OK = true
-		it.Message = "dws upgrade -y"
+		it.OK = false
+		it.Message = err.Error()
 		return it
 	}
 	it.OK = true
-	it.Message = "dws skill setup --mode mono --target all --yes"
+	it.Message = "dws upgrade -y + skill setup mono (once; compare uses latest release not main HEAD)"
 	return it
 }
 
