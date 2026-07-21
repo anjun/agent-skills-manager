@@ -9,33 +9,45 @@
 - **做强**：多工具盘点、真源归口、冲突处理、doctor、outdated、工具自更新  
 - **不做**：替代 [`npx skills`](https://github.com/vercel-labs/skills) 的 marketplace 安装（安装 / 有 lock 的更新仍用它）
 
-## 安装
+## 安装（推荐）
 
-**从 Release 安装（macOS Apple Silicon）：**
+一条命令装好 `asm`（默认装到 `~/.local/bin`，自动识别 macOS/Linux × amd64/arm64）：
+
+**已安装并登录 [GitHub CLI](https://cli.github.com/)（私有仓推荐）：**
 
 ```bash
-# 推荐下 .tar.gz（里面是可执行的 asm）
-tar -xzf agent-skills-manager-darwin-arm64.tar.gz
-mkdir -p ~/bin && mv asm ~/bin/
-export PATH="$HOME/bin:$PATH"
+gh api -H 'Accept: application/vnd.github.raw' \
+  repos/anjun/agent-skills-manager/contents/scripts/install.sh | bash
+```
+
+**已 clone 本仓库：**
+
+```bash
+bash scripts/install.sh
+```
+
+**指定版本 / 安装目录：**
+
+```bash
+ASM_VERSION=0.3.0 ASM_INSTALL_DIR=$HOME/bin bash scripts/install.sh
+```
+
+装好后：
+
+```bash
 asm version
+# 若提示找不到命令，把 ~/.local/bin 加入 PATH（脚本会提示具体一行）
 ```
 
-若下载的是无扩展名裸文件 `agent-skills-manager-darwin-arm64`，浏览器会去掉可执行位，Finder 显示成 Document，需：
+> 私有仓库需要：`gh auth login`，或环境变量 `GITHUB_TOKEN` / `GH_TOKEN`。  
+> 装好之后升级：`asm upgrade`（不必再跑安装脚本）。
 
-```bash
-chmod +x agent-skills-manager-darwin-arm64
-xattr -d com.apple.quarantine agent-skills-manager-darwin-arm64 2>/dev/null || true
-mv agent-skills-manager-darwin-arm64 ~/bin/asm
-```
-
-**从源码安装：**
+### 从源码安装
 
 ```bash
 go build -o bin/agent-skills-manager ./cmd/agent-skills-manager
 ln -sf agent-skills-manager bin/asm
 ./bin/asm version
-# 可选：cp bin/asm ~/bin/
 ```
 
 ## 自更新（GitHub Releases）
@@ -46,24 +58,23 @@ asm upgrade             # 从 GitHub Releases 下载并替换当前二进制
 asm upgrade -y          # 跳过确认
 ```
 
-默认仓库：`anjun/agent-skills-manager`（可用环境变量 `ASM_GITHUB_REPO=owner/repo` 覆盖）。  
-私有仓库需要 token：`GITHUB_TOKEN` / `GH_TOKEN`，或已 `gh auth login`。
+默认仓库：`anjun/agent-skills-manager`（`ASM_GITHUB_REPO=owner/repo` 可覆盖）。
 
 ## 发版（GitHub Actions）
 
 | 触发 | 做什么 | 会发版吗？ |
 |------|--------|------------|
-| push `main` | **CI**：只 `go test` | ❌ 不打包、不发 Release |
-| `make release VERSION=x.y.z` / 推 `v*` tag | **Release**：多平台构建 + 上传 | ✅ |
-
-`dist/` 仅 CI 产物，**不要提交**。
+| push `main` | **CI**：只 `go test` | ❌ |
+| `make release` / 推 `v*` tag | **Release**：多平台构建 + 上传 | ✅ |
 
 ```bash
 make release                 # 自动 patch 升版 → 摘要 → 打 tag → push → CI 发版
-make release BUMP=minor      # 升 minor（也可用 major）
-make release VERSION=0.4.0   # 显式指定版本
+make release BUMP=minor
+make release VERSION=0.4.0
 make summary
 ```
+
+`dist/` 勿提交。
 
 ## 自测
 
@@ -114,7 +125,7 @@ asm undo last
 --extra-root PATH
 ```
 
-环境变量：`ASM_LANG=en`
+环境变量：`ASM_LANG=en`、`ASM_GITHUB_REPO`、`ASM_INSTALL_DIR`、`ASM_VERSION`
 
 ## 许可证
 

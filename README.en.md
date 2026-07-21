@@ -9,24 +9,30 @@ Discover skills on tool and project roots, classify them, unify under `~/.agents
 - **Strengths**: multi-tool inventory, canonical home, conflicts, doctor, outdated, self-update  
 - **Non-goals**: replacing [`npx skills`](https://github.com/vercel-labs/skills) marketplace install
 
-## Install
+## Install (recommended)
 
-**From Release (macOS Apple Silicon):**
+One-liner (installs to `~/.local/bin`, auto-detects OS/arch):
+
+**With [GitHub CLI](https://cli.github.com/) (best for private repos):**
 
 ```bash
-tar -xzf agent-skills-manager-darwin-arm64.tar.gz
-mkdir -p ~/bin && mv asm ~/bin/
-export PATH="$HOME/bin:$PATH"
+gh api -H 'Accept: application/vnd.github.raw' \
+  repos/anjun/agent-skills-manager/contents/scripts/install.sh | bash
+```
+
+**From a clone:**
+
+```bash
+bash scripts/install.sh
+```
+
+```bash
+ASM_VERSION=0.3.0 ASM_INSTALL_DIR=$HOME/bin bash scripts/install.sh
 asm version
+asm upgrade   # later upgrades
 ```
 
-Bare binary downloads often lose `+x` (Finder shows “Document”); then:
-
-```bash
-chmod +x agent-skills-manager-darwin-arm64
-xattr -d com.apple.quarantine agent-skills-manager-darwin-arm64 2>/dev/null || true
-mv agent-skills-manager-darwin-arm64 ~/bin/asm
-```
+Private repos need `gh auth login` or `GITHUB_TOKEN` / `GH_TOKEN`.
 
 **From source:**
 
