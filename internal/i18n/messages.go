@@ -104,6 +104,16 @@ var zh = map[string]string{
 
 	"main.unknown_cmd":        "未知命令: %s\n",
 	"main.error_prefix":       "错误:",
+
+	// progress (ephemeral status on stderr; TTY only)
+	"progress.scanning":        "正在扫描 skill…",
+	"progress.probe_grok":      "正在探测 Grok bundled skills…",
+	"progress.doctor":          "正在体检…",
+	"progress.outdated_begin":  "准备检查 %d 个 skill 更新（可能请求网络，请稍候）…",
+	"progress.outdated_check":  "检查更新 %d/%d  %s…",
+	"progress.upgrade_check":   "正在查询 GitHub Releases…",
+	"progress.upgrade_download": "正在下载并安装更新…",
+
 	"outdated.title":          "Skill 更新检查",
 	"outdated.col_status":     "状态",
 	"outdated.col_name":       "名称",
@@ -371,6 +381,16 @@ var en = map[string]string{
 
 	"main.unknown_cmd":  "unknown command: %s\n",
 	"main.error_prefix": "error:",
+
+	// progress (ephemeral status on stderr; TTY only)
+	"progress.scanning":         "Scanning skills…",
+	"progress.probe_grok":       "Probing Grok bundled skills…",
+	"progress.doctor":           "Running doctor…",
+	"progress.outdated_begin":   "Checking updates for %d skills (may hit the network)…",
+	"progress.outdated_check":   "Checking updates %d/%d  %s…",
+	"progress.upgrade_check":    "Querying GitHub Releases…",
+	"progress.upgrade_download": "Downloading and installing update…",
+
 	"outdated.title":    "Skill update check",
 	"outdated.col_status": "STATUS",
 	"outdated.col_name":   "NAME",

@@ -49,6 +49,19 @@ func TestOwnerRepoFromURL(t *testing.T) {
 	}
 }
 
+func TestLookupCaseInsensitive(t *testing.T) {
+	idx := &Index{ByName: map[string]Entry{
+		"UI-UX-Pro-Max": {Name: "UI-UX-Pro-Max", Source: "a/b"},
+	}}
+	if !idx.Contains("ui-ux-pro-max") {
+		t.Fatal("Contains lower")
+	}
+	e, ok := idx.Lookup("ui-ux-pro-max")
+	if !ok || e.Source != "a/b" {
+		t.Fatalf("Lookup: ok=%v e=%+v", ok, e)
+	}
+}
+
 func TestSkillFolderHashFromTree(t *testing.T) {
 	tree := &RepoTree{
 		SHA: "rootsha",

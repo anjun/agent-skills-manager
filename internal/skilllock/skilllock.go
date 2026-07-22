@@ -88,12 +88,29 @@ func LoadFile(path string) (*File, error) {
 }
 
 // Lookup returns lock entry for skill name, if any.
+// Match is case-insensitive on the skill name.
 func (idx *Index) Lookup(name string) (Entry, bool) {
 	if idx == nil || idx.ByName == nil {
 		return Entry{}, false
 	}
-	e, ok := idx.ByName[strings.TrimSpace(name)]
-	return e, ok
+	name = strings.TrimSpace(name)
+	if e, ok := idx.ByName[name]; ok {
+		return e, true
+	}
+	// case-insensitive fallback (lock keys keep original casing from npx skills)
+	lower := strings.ToLower(name)
+	for k, e := range idx.ByName {
+		if strings.ToLower(k) == lower {
+			return e, true
+		}
+	}
+	return Entry{}, false
+}
+
+// Contains reports whether any global lock lists the skill name (case-insensitive).
+func (idx *Index) Contains(name string) bool {
+	_, ok := idx.Lookup(name)
+	return ok
 }
 
 // CanCheckGitHub reports whether we can compare skillFolderHash via Trees API.

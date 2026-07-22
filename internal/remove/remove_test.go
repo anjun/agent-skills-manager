@@ -79,6 +79,8 @@ func TestRunRemovesCanonicalAndSymlink(t *testing.T) {
 func TestPlanSkipsVendor(t *testing.T) {
 	// minimal: empty scan with no paths — name not found
 	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_STATE_HOME", filepath.Join(home, "xdg-state"))
 	cfg := config.Default()
 	cfg.Home = home
 	cfg.AgentsSkills = filepath.Join(home, ".agents", "skills")
@@ -90,5 +92,101 @@ func TestPlanSkipsVendor(t *testing.T) {
 	}
 	if len(res.Planned) != 0 {
 		t.Fatalf("%+v", res)
+	}
+}
+
+// Orphan skill-lock entries (doctor U2) must be removable even when the skill dir is gone.
+func TestRunCleansOrphanSkillLock(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_STATE_HOME", filepath.Join(home, "xdg-state"))
+
+	agents := filepath.Join(home, ".agents", "skills")
+	if err := os.MkdirAll(agents, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	lock := filepath.Join(home, ".agents", ".skill-lock.json")
+	raw := `{"version":3,"skills":{"ui-ux-pro-max":{"source":"x/y","sourceType":"github","skillPath":"a/SKILL.md","skillFolderHash":"abc"},"keep-me":{"source":"a/b","sourceType":"github","skillPath":"b/SKILL.md","skillFolderHash":"def"}}}`
+	if err := os.WriteFile(lock, []byte(raw), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := config.Default()
+	cfg.Home = home
+	cfg.AgentsSkills = agents
+	vl, _ := vendorlist.Load(nil, cfg)
+
+	// Plan should mark lock-only, not "not found"
+	plan, err := Plan(cfg, vl, []string{"ui-ux-pro-max"}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Planned) != 0 {
+		t.Fatalf("expected no disk paths, planned=%+v", plan.Planned)
+	}
+	if len(plan.LockOnly) != 1 || plan.LockOnly[0] != "ui-ux-pro-max" {
+		t.Fatalf("LockOnly=%v skipped=%v", plan.LockOnly, plan.Skipped)
+	}
+
+	var buf strings.Builder
+	res, err := Run(cfg, vl, Options{
+		Names:  []string{"ui-ux-pro-max"},
+		Yes:    true,
+		Stdout: &buf,
+		Stdin:  strings.NewReader(""),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.LockModified) == 0 {
+		t.Fatalf("expected lock modified, out=%s res=%+v", buf.String(), res)
+	}
+	b, _ := os.ReadFile(lock)
+	if strings.Contains(string(b), `"ui-ux-pro-max"`) {
+		t.Fatalf("orphan still in lock: %s", b)
+	}
+	if !strings.Contains(string(b), `"keep-me"`) {
+		t.Fatalf("unrelated lock entry removed: %s", b)
+	}
+	if !strings.Contains(buf.String(), "skill-lock") {
+		t.Fatalf("expected lock-cleanup message, out=%s", buf.String())
+	}
+}
+
+func TestRunOrphanKeepLockDoesNotTouchLock(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_STATE_HOME", filepath.Join(home, "xdg-state"))
+
+	agents := filepath.Join(home, ".agents", "skills")
+	_ = os.MkdirAll(agents, 0o755)
+	lock := filepath.Join(home, ".agents", ".skill-lock.json")
+	raw := `{"version":3,"skills":{"ghost":{"source":"x/y","sourceType":"github","skillPath":"a/SKILL.md","skillFolderHash":"abc"}}}`
+	if err := os.WriteFile(lock, []byte(raw), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := config.Default()
+	cfg.Home = home
+	cfg.AgentsSkills = agents
+	vl, _ := vendorlist.Load(nil, cfg)
+
+	var buf strings.Builder
+	res, err := Run(cfg, vl, Options{
+		Names:    []string{"ghost"},
+		Yes:      true,
+		KeepLock: true,
+		Stdout:   &buf,
+		Stdin:    strings.NewReader(""),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.LockModified) != 0 {
+		t.Fatalf("keep-lock should not modify: %+v", res)
+	}
+	b, _ := os.ReadFile(lock)
+	if !strings.Contains(string(b), `"ghost"`) {
+		t.Fatalf("lock was modified with --keep-lock: %s", b)
 	}
 }

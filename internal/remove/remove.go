@@ -46,9 +46,11 @@ type Result struct {
 	Planned      []PlanItem `json:"planned"`
 	Removed      []string   `json:"removed"`
 	Failed       []string   `json:"failed,omitempty"`
-	Skipped      []string   `json:"skipped,omitempty"` // vendor / project
-	LockModified []string   `json:"lock_modified,omitempty"`
-	Aborted      bool       `json:"aborted,omitempty"`
+	Skipped      []string   `json:"skipped,omitempty"` // vendor / project / truly missing
+	// LockOnly: requested names absent from disk but present in skill-lock (orphan entries).
+	LockOnly     []string `json:"lock_only,omitempty"`
+	LockModified []string `json:"lock_modified,omitempty"`
+	Aborted      bool     `json:"aborted,omitempty"`
 }
 
 // Plan builds a removal plan without deleting.
@@ -141,11 +143,19 @@ func Plan(cfg *config.Config, vl *vendorlist.List, names []string, includeProjec
 		}
 	}
 
+	// Orphan skill-lock entries: doctor recommends `asm remove <name>` even when nothing is on disk.
+	lockIdx := skilllock.LoadIndex()
 	for name := range want {
-		if !foundName[name] {
-			out.Skipped = append(out.Skipped, name+" (not found in global roots)")
+		if foundName[name] {
+			continue
 		}
+		if lockIdx.Contains(name) {
+			out.LockOnly = append(out.LockOnly, name)
+			continue
+		}
+		out.Skipped = append(out.Skipped, name+" (not found in global roots)")
 	}
+	sort.Strings(out.LockOnly)
 
 	sort.Slice(out.Planned, func(i, j int) bool {
 		if out.Planned[i].Name != out.Planned[j].Name {
@@ -170,22 +180,44 @@ func Run(cfg *config.Config, vl *vendorlist.List, opt Options) (*Result, error) 
 		return nil, err
 	}
 
-	if len(plan.Planned) == 0 {
+	// Disk paths and/or orphan skill-lock entries are both uninstall targets.
+	// KeepLock means lock-only names are not actionable.
+	lockCleanup := !opt.KeepLock && len(plan.LockOnly) > 0
+	if len(plan.Planned) == 0 && !lockCleanup {
 		fmt.Fprintln(opt.Stdout, "没有可卸载的全局 skill。")
 		for _, s := range plan.Skipped {
 			fmt.Fprintf(opt.Stdout, "  skip: %s\n", s)
 		}
+		// With --keep-lock, orphan lock names would have been LockOnly; surface them.
+		if opt.KeepLock {
+			for _, n := range plan.LockOnly {
+				fmt.Fprintf(opt.Stdout, "  skip: %s (skill-lock only; omit --keep-lock to clean)\n", n)
+			}
+		}
 		return plan, nil
 	}
 
-	fmt.Fprintln(opt.Stdout, "将删除以下路径：")
-	for _, it := range plan.Planned {
-		fmt.Fprintf(opt.Stdout, "  [%s] %s  %s  (%s)\n", it.Kind, it.Name, fsutil.RelHome(it.Path), it.Tool)
+	if len(plan.Planned) > 0 {
+		fmt.Fprintln(opt.Stdout, "将删除以下路径：")
+		for _, it := range plan.Planned {
+			fmt.Fprintf(opt.Stdout, "  [%s] %s  %s  (%s)\n", it.Kind, it.Name, fsutil.RelHome(it.Path), it.Tool)
+		}
+	}
+	if lockCleanup {
+		if len(plan.Planned) == 0 {
+			fmt.Fprintln(opt.Stdout, "磁盘无此 skill，将清理 skill-lock 孤立条目：")
+		} else {
+			fmt.Fprintln(opt.Stdout, "并清理 skill-lock 孤立条目：")
+		}
+		for _, n := range plan.LockOnly {
+			fmt.Fprintf(opt.Stdout, "  [skill-lock] %s\n", n)
+		}
 	}
 	for _, s := range plan.Skipped {
 		fmt.Fprintf(opt.Stdout, "  skip: %s\n", s)
 	}
-	if !opt.KeepLock {
+	// Disk paths also try to drop matching lock entries (npx skills provenance).
+	if !opt.KeepLock && len(plan.Planned) > 0 {
 		fmt.Fprintln(opt.Stdout, "  并尝试从 ~/.agents/.skill-lock.json 移除同名条目")
 	}
 
@@ -222,8 +254,8 @@ func Run(cfg *config.Config, vl *vendorlist.List, opt Options) (*Result, error) 
 	}
 
 	if !opt.KeepLock {
-		names := uniqueNames(plan.Planned)
-		mod, err := skilllock.RemoveSkills(names)
+		// Use all requested names so disk hits and lock-only orphans both leave the lock file.
+		mod, err := skilllock.RemoveSkills(opt.Names)
 		if err != nil {
 			plan.Failed = append(plan.Failed, "skill-lock: "+err.Error())
 		} else {
@@ -244,18 +276,4 @@ func normalizeNames(names []string) map[string]bool {
 		}
 	}
 	return want
-}
-
-func uniqueNames(items []PlanItem) []string {
-	m := map[string]bool{}
-	var out []string
-	for _, it := range items {
-		k := strings.ToLower(it.Name)
-		if m[k] {
-			continue
-		}
-		m[k] = true
-		out = append(out, it.Name)
-	}
-	return out
 }

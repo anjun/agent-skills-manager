@@ -19,6 +19,7 @@ import (
 	"github.com/anj/agent-skills-manager/internal/i18n"
 	"github.com/anj/agent-skills-manager/internal/outdated"
 	"github.com/anj/agent-skills-manager/internal/plan"
+	"github.com/anj/agent-skills-manager/internal/progress"
 	"github.com/anj/agent-skills-manager/internal/remove"
 	"github.com/anj/agent-skills-manager/internal/scan"
 	"github.com/anj/agent-skills-manager/internal/selfupdate"
@@ -47,8 +48,15 @@ func main() {
 	if err != nil {
 		fail(cfg, err)
 	}
-	// Grok: prefer live `grok inspect` over static name denylist
-	vl.AttachGrokProbe(cfg)
+	// Grok: prefer live `grok inspect` over static name denylist (can take a few seconds)
+	prog := progress.New(cfg.JSON)
+	if !cfg.NoProbe && cfg.ToolEnabled("grok") && needsGrokProbe(cmd) {
+		prog.Statusf("%s", cfg.T().S("progress.probe_grok"))
+	}
+	if needsGrokProbe(cmd) {
+		vl.AttachGrokProbe(cfg)
+	}
+	prog.Done()
 
 	switch cmd {
 	case "version", "-v", "--version":
@@ -412,7 +420,10 @@ func runUndo(cfg *config.Config, id string) {
 
 func runDoctor(cfg *config.Config, vl *vendorlist.List) {
 	tr := cfg.T()
+	prog := progress.New(cfg.JSON)
+	prog.Statusf("%s", tr.S("progress.doctor"))
 	issues, err := doctor.Run(cfg, vl)
+	prog.Done()
 	if err != nil {
 		fail(cfg, err)
 	}
@@ -456,7 +467,9 @@ func runOutdated(cfg *config.Config, vl *vendorlist.List, args []string) {
 		}
 	}
 
-	res, err := outdated.Run(cfg, vl)
+	prog := progress.New(cfg.JSON)
+	res, err := outdated.RunOpts(cfg, vl, outdated.RunOptions{Progress: prog})
+	prog.Done()
 	if err != nil {
 		fail(cfg, err)
 	}
@@ -757,12 +770,15 @@ func runUpgrade(cfg *config.Config, args []string) {
 		CheckOnly: checkOnly,
 		Yes:       cfg.Yes,
 	}
+	prog := progress.New(cfg.JSON)
 	// Preview first when not --check and not --yes on TTY
 	if !checkOnly && !cfg.Yes {
+		prog.Statusf("%s", tr.S("progress.upgrade_check"))
 		preview, err := selfupdate.Run(context.Background(), selfupdate.Options{
 			Current:   version,
 			CheckOnly: true,
 		})
+		prog.Done()
 		if err != nil {
 			fail(cfg, err)
 		}
@@ -788,7 +804,13 @@ func runUpgrade(cfg *config.Config, args []string) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
+	if checkOnly {
+		prog.Statusf("%s", tr.S("progress.upgrade_check"))
+	} else {
+		prog.Statusf("%s", tr.S("progress.upgrade_download"))
+	}
 	res, err := selfupdate.Run(ctx, opt)
+	prog.Done()
 	if err != nil {
 		fail(cfg, err)
 	}
@@ -820,4 +842,15 @@ func usage(cfg *config.Config) {
 func fail(cfg *config.Config, err error) {
 	fmt.Fprintln(os.Stderr, cfg.T().S("main.error_prefix"), err)
 	os.Exit(1)
+}
+
+// needsGrokProbe: skip live grok inspect on meta commands that never classify skills.
+func needsGrokProbe(cmd string) bool {
+	switch cmd {
+	case "version", "-v", "--version", "help", "-h", "--help",
+		"upgrade", "self-update", "selfupdate":
+		return false
+	default:
+		return true
+	}
 }

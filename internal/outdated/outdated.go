@@ -17,11 +17,18 @@ import (
 	"github.com/anj/agent-skills-manager/internal/fsutil"
 	"github.com/anj/agent-skills-manager/internal/i18n"
 	"github.com/anj/agent-skills-manager/internal/knownsource"
+	"github.com/anj/agent-skills-manager/internal/progress"
 	"github.com/anj/agent-skills-manager/internal/scan"
 	"github.com/anj/agent-skills-manager/internal/skill"
 	"github.com/anj/agent-skills-manager/internal/skilllock"
 	"github.com/anj/agent-skills-manager/internal/vendorlist"
 )
+
+// RunOptions configures check-only outdated.Run.
+type RunOptions struct {
+	// Progress receives live status (optional; nil = silent).
+	Progress *progress.Reporter
+}
 
 // Status of one skill's update check.
 type Status string
@@ -80,23 +87,30 @@ const gitTimeout = 8 * time.Second
 
 // Run scans skills and checks those with provenance (check-only).
 func Run(cfg *config.Config, vl *vendorlist.List) (*Result, error) {
-	res, err := scan.Run(cfg, vl)
-	if err != nil {
-		return nil, err
-	}
-	out := &Result{}
-	seenPath := map[string]bool{} // content path de-dupe
-	// name → best entry (prefer canonical / agents path). Multiple real copies
-	// of the same skill (e.g. dws skill setup writes dirs into every agent home)
-	// must not produce N outdated rows or N update runs.
-	byName := map[string]Entry{}
-	nameRank := map[string]int{}
+	return RunOpts(cfg, vl, RunOptions{})
+}
 
-	lockIdx := skilllock.LoadIndex()
-	treeCache := skilllock.NewTreeCache()
-	agentsAbs := fsutil.Abs(cfg.AgentsSkills)
+// RunOpts is Run with live progress support.
+func RunOpts(cfg *config.Config, vl *vendorlist.List, opt RunOptions) (*Result, error) {
+	prog := opt.Progress
+	if prog == nil {
+		prog = progress.Silent()
+	}
 	tr := cfg.T()
 
+	prog.Statusf("%s", tr.S("progress.scanning"))
+	res, err := scan.Run(cfg, vl)
+	if err != nil {
+		prog.Done()
+		return nil, err
+	}
+
+	type cand struct {
+		e           scan.Entry
+		contentPath string
+	}
+	var cands []cand
+	seenPath := map[string]bool{} // content path de-dupe
 	for _, e := range res.Entries {
 		switch e.Class {
 		case scan.ClassVendor:
@@ -116,8 +130,27 @@ func Run(cfg *config.Config, vl *vendorlist.List) (*Result, error) {
 			continue
 		}
 		seenPath[contentPath] = true
+		cands = append(cands, cand{e: e, contentPath: contentPath})
+	}
 
-		ent := checkOne(e, contentPath, lockIdx, treeCache, tr)
+	out := &Result{}
+	// name → best entry (prefer canonical / agents path). Multiple real copies
+	// of the same skill (e.g. dws skill setup writes dirs into every agent home)
+	// must not produce N outdated rows or N update runs.
+	byName := map[string]Entry{}
+	nameRank := map[string]int{}
+
+	lockIdx := skilllock.LoadIndex()
+	treeCache := skilllock.NewTreeCache()
+	agentsAbs := fsutil.Abs(cfg.AgentsSkills)
+	n := len(cands)
+	if n > 0 {
+		prog.Statusf("%s", tr.S("progress.outdated_begin", n))
+	}
+
+	for i, c := range cands {
+		prog.Statusf("%s", tr.S("progress.outdated_check", i+1, n, c.e.Name))
+		ent := checkOne(c.e, c.contentPath, lockIdx, treeCache, tr)
 		key := strings.ToLower(ent.Name)
 		rank := entryPreferRank(ent, agentsAbs)
 		if prev, ok := byName[key]; ok {
@@ -130,15 +163,16 @@ func Run(cfg *config.Config, vl *vendorlist.List) (*Result, error) {
 		byName[key] = ent
 		nameRank[key] = rank
 	}
+	prog.Done()
 
 	// stable order by name
 	names := make([]string, 0, len(byName))
-	for n := range byName {
-		names = append(names, n)
+	for nm := range byName {
+		names = append(names, nm)
 	}
 	sort.Strings(names)
-	for _, n := range names {
-		out.Entries = append(out.Entries, byName[n])
+	for _, nm := range names {
+		out.Entries = append(out.Entries, byName[nm])
 	}
 
 	for _, ent := range out.Entries {
