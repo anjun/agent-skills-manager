@@ -142,5 +142,9 @@ func (t *T) NoteLabel(note string) string {
 	if strings.HasPrefix(note, ensure) {
 		return t.S("note.ensure_symlink", strings.TrimPrefix(note, ensure))
 	}
+	const fixWire = "fix wire link in "
+	if strings.HasPrefix(note, fixWire) {
+		return t.S("note.fix_wire_link", strings.TrimPrefix(note, fixWire))
+	}
 	return note
 }

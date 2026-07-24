@@ -135,6 +135,39 @@ func IsSymlink(path string) bool {
 	return st.Mode()&os.ModeSymlink != 0
 }
 
+// SkillLinkState describes how a tool-root path relates to the desired agents target.
+type SkillLinkState int
+
+const (
+	// LinkMissing: path does not exist.
+	LinkMissing SkillLinkState = iota
+	// LinkOK: correct symlink to target (or path is the target itself).
+	LinkOK
+	// LinkWrong: exists but is a real dir/file, broken link, or points elsewhere.
+	LinkWrong
+)
+
+// SkillLinkStateOf reports whether linkPath is a correct symlink to target.
+func SkillLinkStateOf(linkPath, target string) SkillLinkState {
+	target = Abs(target)
+	linkPath = Abs(linkPath)
+	if linkPath == target {
+		return LinkOK
+	}
+	st, err := os.Lstat(linkPath)
+	if err != nil {
+		return LinkMissing
+	}
+	if st.Mode()&os.ModeSymlink != 0 {
+		cur, err := ReadLinkAbs(linkPath)
+		if err == nil && Abs(cur) == target {
+			return LinkOK
+		}
+		return LinkWrong
+	}
+	return LinkWrong
+}
+
 // ReadLinkAbs returns absolute target of a symlink.
 func ReadLinkAbs(path string) (string, error) {
 	t, err := os.Readlink(path)

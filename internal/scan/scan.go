@@ -3,6 +3,7 @@ package scan
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/anj/agent-skills-manager/internal/config"
@@ -34,9 +35,19 @@ type Entry struct {
 	Reason  string `json:"reason,omitempty"`
 }
 
+// WireGap is a skill already under ~/.agents/skills but missing or wrong
+// symlinks in one or more tool wire roots (claude/cursor/grok/…).
+type WireGap struct {
+	Name       string   `json:"name"`
+	AgentsPath string   `json:"agents_path"`
+	Missing    []string `json:"missing,omitempty"` // tools with no path
+	Wrong      []string `json:"wrong,omitempty"`   // real dir / bad symlink
+}
+
 // Result is a full scan.
 type Result struct {
-	Entries []Entry `json:"entries"`
+	Entries  []Entry   `json:"entries"`
+	WireGaps []WireGap `json:"wire_gaps,omitempty"`
 }
 
 // Run discovers skills under known roots.
@@ -58,7 +69,90 @@ func Run(cfg *config.Config, vl *vendorlist.List) (*Result, error) {
 			entries = append(entries, e)
 		}
 	}
-	return &Result{Entries: entries}, nil
+	res := &Result{Entries: entries}
+	res.WireGaps = ComputeWireGaps(cfg, res)
+	return res, nil
+}
+
+// ComputeWireGaps finds canonical skills that lack correct tool symlinks.
+// Manual drops into ~/.agents/skills are the main case: content is home, but
+// claude/cursor/grok/codex/gemini roots may have nothing yet.
+func ComputeWireGaps(cfg *config.Config, res *Result) []WireGap {
+	if res == nil {
+		return nil
+	}
+	agents := fsutil.Abs(cfg.AgentsSkills)
+	// name → agents content path
+	agentsPath := map[string]string{}
+	for _, e := range res.Entries {
+		if e.Class != ClassCanonical {
+			continue
+		}
+		content := e.Path
+		if e.Symlink && e.Target != "" {
+			content = e.Target
+		}
+		content = fsutil.Abs(content)
+		if !pathUnder(content, agents) {
+			continue
+		}
+		// prefer the real agents dir entry over a tool symlink row
+		if cur, ok := agentsPath[e.Name]; ok {
+			if pathUnder(e.Path, agents) && !e.Symlink {
+				agentsPath[e.Name] = fsutil.Abs(e.Path)
+			} else if cur == "" {
+				agentsPath[e.Name] = content
+			}
+			continue
+		}
+		if pathUnder(e.Path, agents) && !e.Symlink {
+			agentsPath[e.Name] = fsutil.Abs(e.Path)
+		} else {
+			agentsPath[e.Name] = content
+		}
+	}
+
+	wireRoots := roots.WireRoots(cfg)
+	if len(wireRoots) == 0 || len(agentsPath) == 0 {
+		return nil
+	}
+
+	names := make([]string, 0, len(agentsPath))
+	for n := range agentsPath {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+
+	var gaps []WireGap
+	for _, name := range names {
+		dest := agentsPath[name]
+		g := WireGap{Name: name, AgentsPath: dest}
+		for _, wr := range wireRoots {
+			linkPath := filepath.Join(wr.Path, name)
+			switch fsutil.SkillLinkStateOf(linkPath, dest) {
+			case fsutil.LinkOK:
+				// good
+			case fsutil.LinkMissing:
+				g.Missing = append(g.Missing, wr.Tool)
+			case fsutil.LinkWrong:
+				g.Wrong = append(g.Wrong, wr.Tool)
+			}
+		}
+		if len(g.Missing) > 0 || len(g.Wrong) > 0 {
+			gaps = append(gaps, g)
+		}
+	}
+	return gaps
+}
+
+func pathUnder(path, root string) bool {
+	path = fsutil.Abs(path)
+	root = fsutil.Abs(root)
+	if path == root {
+		return true
+	}
+	prefix := root + string(filepath.Separator)
+	return strings.HasPrefix(path, prefix)
 }
 
 func walkRoot(r roots.Root, cfg *config.Config, vl *vendorlist.List) ([]Entry, error) {

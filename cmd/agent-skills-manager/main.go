@@ -180,10 +180,12 @@ func printScanHuman(cfg *config.Config, vl *vendorlist.List, res *scan.Result) {
 	cU := len(byClass[scan.ClassUser])
 	cV := len(byClass[scan.ClassVendor])
 	cP := len(byClass[scan.ClassProject])
+	cW := len(res.WireGaps)
 
 	fmt.Println(tr.S("scan.summary_title"))
 	fmt.Println(tr.S("scan.sum_canonical", cC))
 	fmt.Println(tr.S("scan.sum_user", cU))
+	fmt.Println(tr.S("scan.sum_unwired", cW))
 	fmt.Println(tr.S("scan.sum_project", cP))
 	fmt.Println(tr.S("scan.sum_vendor", cV))
 	fmt.Println(tr.S("scan.sum_total", len(res.Entries)))
@@ -241,8 +243,31 @@ func printScanHuman(cfg *config.Config, vl *vendorlist.List, res *scan.Result) {
 		fmt.Println()
 	}
 
+	// Skills already in agents but missing/wrong tool symlinks (manual agents drops).
+	if cW > 0 {
+		fmt.Println(tr.S("scan.sec_header", tr.S("scan.sec_unwired"), cW, tr.S("scan.sec_unwired_h")))
+		w := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
+		fmt.Fprintf(w, "  %s\t%s\t%s\t%s\n",
+			tr.S("scan.col_name"), tr.S("scan.col_missing"), tr.S("scan.col_wrong"), tr.S("scan.col_path"))
+		for _, g := range res.WireGaps {
+			miss := strings.Join(g.Missing, ",")
+			if miss == "" {
+				miss = "-"
+			}
+			wrong := strings.Join(g.Wrong, ",")
+			if wrong == "" {
+				wrong = "-"
+			}
+			fmt.Fprintf(w, "  %s\t%s\t%s\t%s\n", g.Name, miss, wrong, shortPath(g.AgentsPath))
+		}
+		_ = w.Flush()
+		fmt.Println()
+	}
+
 	if cU > 0 {
 		fmt.Println(tr.S("scan.next_plan"))
+	} else if cW > 0 {
+		fmt.Println(tr.S("scan.next_wire"))
 	}
 	if cP == 0 && !cfg.NoProject {
 		fmt.Println(tr.S("scan.project_note1"))

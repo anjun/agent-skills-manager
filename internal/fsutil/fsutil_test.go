@@ -37,6 +37,36 @@ func TestRelHome(t *testing.T) {
 	}
 }
 
+func TestSkillLinkStateOf(t *testing.T) {
+	tmp := t.TempDir()
+	target := filepath.Join(tmp, "agents", "demo")
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	tools := filepath.Join(tmp, "claude", "skills")
+	if err := os.MkdirAll(tools, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	missing := filepath.Join(tools, "missing")
+	if SkillLinkStateOf(missing, target) != LinkMissing {
+		t.Fatal("expected missing")
+	}
+	ok := filepath.Join(tools, "ok")
+	if err := os.Symlink(target, ok); err != nil {
+		t.Fatal(err)
+	}
+	if SkillLinkStateOf(ok, target) != LinkOK {
+		t.Fatal("expected ok symlink")
+	}
+	wrong := filepath.Join(tools, "wrong")
+	if err := os.MkdirAll(wrong, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if SkillLinkStateOf(wrong, target) != LinkWrong {
+		t.Fatal("expected wrong real dir")
+	}
+}
+
 func TestIsASMBackupDir(t *testing.T) {
 	cases := []struct {
 		name string

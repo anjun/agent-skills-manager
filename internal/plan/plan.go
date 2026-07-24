@@ -169,34 +169,77 @@ func Build(cfg *config.Config, res *scan.Result) *Plan {
 			})
 		}
 
-		// replace other real copies (same hash) with links later via apply wire
-		for _, c := range contents {
-			if c.path == primary.path || under(c.path, p.AgentsDir) {
-				continue
-			}
-			p.Actions = append(p.Actions, Action{
-				Type: ActionLink, Name: name,
-				SourcePath: c.path, DestPath: dest, Hash: primary.hash, Tool: c.tool,
-				Note: "replace duplicate real copy with symlink",
-			})
+		// Dest after migrate (or already): agents path for this skill name.
+		// Wire actions always target dest even when content still lives at primary
+		// until migrate runs (apply migrates first, then links).
+		linkDest := dest
+		if !inAgents {
+			// migrate will move primary → dest; links go to dest
+			linkDest = dest
 		}
+
+		// Track wire-root link paths so we do not double-emit with the loop below.
+		wiredLink := map[string]bool{}
 
 		// wire mainstream tool roots (respect per-tool disable gates)
 		for _, wr := range wireRoots {
+			linkPath := filepath.Join(wr.Path, name)
+			wiredLink[fsutil.Abs(linkPath)] = true
 			if gates != nil && gates.IsToolOff(name, wr.Tool) {
 				p.Actions = append(p.Actions, Action{
 					Type: ActionSkip, Name: name,
-					SourcePath: filepath.Join(wr.Path, name), DestPath: dest, Tool: wr.Tool,
+					SourcePath: linkPath, DestPath: linkDest, Tool: wr.Tool,
 					Note: tr.S("plan.note.tool_off", wr.Tool, name, wr.Tool),
 				})
 				continue
 			}
-			linkPath := filepath.Join(wr.Path, name)
-			// skip if linkPath is the primary source path and we're migrating (handled after move)
+			// Already a correct symlink into agents → skip (common after manual agents drop + partial wire).
+			// If content still needs migrate, dest may not exist yet; still plan the link.
+			if inAgents {
+				switch fsutil.SkillLinkStateOf(linkPath, linkDest) {
+				case fsutil.LinkOK:
+					p.Actions = append(p.Actions, Action{
+						Type: ActionSkip, Name: name,
+						SourcePath: linkPath, DestPath: linkDest, Tool: wr.Tool, Hash: primary.hash,
+						Note: "already linked to agents",
+					})
+					continue
+				case fsutil.LinkWrong:
+					p.Actions = append(p.Actions, Action{
+						Type: ActionLink, Name: name,
+						SourcePath: linkPath, DestPath: linkDest, Tool: wr.Tool, Hash: primary.hash,
+						Note: "fix wire link in " + wr.Tool,
+					})
+					continue
+				case fsutil.LinkMissing:
+					p.Actions = append(p.Actions, Action{
+						Type: ActionLink, Name: name,
+						SourcePath: linkPath, DestPath: linkDest, Tool: wr.Tool, Hash: primary.hash,
+						Note: "ensure symlink in " + wr.Tool,
+					})
+					continue
+				}
+			}
+			// Migrating: always ensure every tool gets a link after move.
 			p.Actions = append(p.Actions, Action{
 				Type: ActionLink, Name: name,
-				SourcePath: linkPath, DestPath: dest, Tool: wr.Tool,
+				SourcePath: linkPath, DestPath: linkDest, Tool: wr.Tool, Hash: primary.hash,
 				Note: "ensure symlink in " + wr.Tool,
+			})
+		}
+
+		// Real copies outside wire roots (e.g. ~/.gemini/config/skills) → replace with link.
+		for _, c := range contents {
+			if c.path == primary.path || under(c.path, p.AgentsDir) {
+				continue
+			}
+			if wiredLink[fsutil.Abs(c.path)] {
+				continue // handled by wire loop
+			}
+			p.Actions = append(p.Actions, Action{
+				Type: ActionLink, Name: name,
+				SourcePath: c.path, DestPath: linkDest, Hash: primary.hash, Tool: c.tool,
+				Note: "replace duplicate real copy with symlink",
 			})
 		}
 	}

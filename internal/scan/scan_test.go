@@ -10,6 +10,74 @@ import (
 	"github.com/anj/agent-skills-manager/internal/vendorlist"
 )
 
+func TestComputeWireGaps(t *testing.T) {
+	tmp := t.TempDir()
+	agents := filepath.Join(tmp, ".agents", "skills")
+	claude := filepath.Join(tmp, ".claude", "skills")
+	cursor := filepath.Join(tmp, ".cursor", "skills")
+	for _, d := range []string{agents, claude, cursor} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// skill only in agents — no tool links
+	solo := filepath.Join(agents, "solo")
+	if err := os.MkdirAll(solo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(solo, "SKILL.md"), []byte("---\nname: solo\n---\n# s\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// skill in agents + correct claude link, missing cursor
+	wired := filepath.Join(agents, "wired")
+	if err := os.MkdirAll(wired, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wired, "SKILL.md"), []byte("---\nname: wired\n---\n# w\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(wired, filepath.Join(claude, "wired")); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := config.Default()
+	cfg.Home = tmp
+	cfg.AgentsSkills = agents
+	cfg.OnlyTools = []string{"claude", "cursor"}
+	cfg.NoProbe = true
+	cfg.NoProject = true
+
+	vl, err := vendorlist.Load(nil, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := Run(cfg, vl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byName := map[string]WireGap{}
+	for _, g := range res.WireGaps {
+		byName[g.Name] = g
+	}
+	soloG, ok := byName["solo"]
+	if !ok {
+		t.Fatalf("solo should be unwired, gaps=%v", res.WireGaps)
+	}
+	if len(soloG.Missing) != 2 {
+		t.Fatalf("solo missing=%v want claude+cursor", soloG.Missing)
+	}
+	wiredG, ok := byName["wired"]
+	if !ok {
+		t.Fatal("wired should still miss cursor")
+	}
+	if len(wiredG.Missing) != 1 || wiredG.Missing[0] != "cursor" {
+		t.Fatalf("wired missing=%v", wiredG.Missing)
+	}
+	if len(wiredG.Wrong) != 0 {
+		t.Fatalf("wired wrong=%v", wiredG.Wrong)
+	}
+}
+
 func TestRunSkipsASMBackupDirs(t *testing.T) {
 	tmp := t.TempDir()
 	agents := filepath.Join(tmp, ".agents", "skills")
