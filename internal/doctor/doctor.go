@@ -85,10 +85,22 @@ func Run(cfg *config.Config, vl *vendorlist.List) ([]Issue, error) {
 			issues = append(issues, Issue{"warn", p, tr.S("doctor.dup_reals", reals)})
 		}
 	}
-	// wire roots missing
+	// wire roots missing; also flag apply-side *.bak-<txID> leftovers
 	for _, wr := range roots.WireRoots(cfg) {
 		if _, err := os.Stat(wr.Path); err != nil {
 			issues = append(issues, Issue{"info", wr.Path, tr.S("doctor.wire_missing")})
+			continue
+		}
+		ents, err := os.ReadDir(wr.Path)
+		if err != nil {
+			continue
+		}
+		for _, ent := range ents {
+			if !ent.IsDir() || !fsutil.IsASMBackupDir(ent.Name()) {
+				continue
+			}
+			p := filepath.Join(wr.Path, ent.Name())
+			issues = append(issues, Issue{"info", p, tr.S("doctor.bak_leftover", fsutil.RelHome(p))})
 		}
 	}
 	// agents dir

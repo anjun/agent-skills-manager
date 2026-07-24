@@ -14,6 +14,43 @@ func Home() string {
 	return h
 }
 
+// IsASMBackupDir reports whether a directory basename is an apply-side backup.
+// apply renames displaced content to "<name>.bak-<txID>" where
+// txID is "YYYYMMDD-HHMMSS-xxxx" (see apply.rand4).
+// Example: "dws.bak-20260721-161027-7b88"
+func IsASMBackupDir(base string) bool {
+	base = filepath.Base(base)
+	i := strings.LastIndex(base, ".bak-")
+	if i <= 0 {
+		return false
+	}
+	id := base[i+len(".bak-"):]
+	// YYYYMMDD-HHMMSS-xxxx → at least 8+1+6+1+1 = 17 chars; typically 19
+	if len(id) < 17 || len(id) > 24 {
+		return false
+	}
+	// 8 digits, '-', 6 digits, '-', hex suffix
+	if id[8] != '-' || id[15] != '-' {
+		return false
+	}
+	for _, c := range id[:8] {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	for _, c := range id[9:15] {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	for _, c := range id[16:] {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
+}
+
 func ExpandHome(p string) string {
 	if p == "" {
 		return p

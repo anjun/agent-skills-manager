@@ -60,7 +60,11 @@ names_by_tool:
     - find-skills
 
 # Always vendor if name matches (any tool root).
+# These are Grok platform skills that may live as real dirs under ~/.grok/skills
+# (user overrides or older installs). Inspect labels them source.type=user, but
+# they must never be migrated into multi-tool ~/.agents/skills.
 names_global:
   - help
   - create-skill
   - imagine
+  - check-work

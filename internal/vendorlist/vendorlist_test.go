@@ -43,6 +43,10 @@ names_by_tool:
   grok:
     - help
     - strict-code-review
+names_global:
+  - help
+  - create-skill
+  - check-work
 `)
 	cfg := config.Default()
 	l, err := Load(yaml, cfg)
@@ -67,6 +71,19 @@ names_by_tool:
 	ok, _ = l.ClassifyVendor("grok", "strict-code-review", strict)
 	if ok {
 		t.Fatal("strict-code-review is user per probe; denylist must not apply")
+	}
+
+	// User-dir override of a reserved platform skill: inspect says type=user,
+	// but names_global must still block migration into multi-tool agents.
+	createSkillUser := filepath.Clean("/Users/me/.grok/skills/create-skill")
+	ok, reason = l.ClassifyVendor("grok", "create-skill", createSkillUser)
+	if !ok || reason != "global denylist name" {
+		t.Fatalf("create-skill user override should be global denylist, got ok=%v reason=%s", ok, reason)
+	}
+	checkWork := filepath.Clean("/Users/me/.grok/skills/check-work")
+	ok, reason = l.ClassifyVendor("grok", "check-work", checkWork)
+	if !ok || reason != "global denylist name" {
+		t.Fatalf("check-work should be global denylist, got ok=%v reason=%s", ok, reason)
 	}
 }
 

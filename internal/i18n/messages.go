@@ -75,6 +75,7 @@ var zh = map[string]string{
 	"doctor.lock_orphan_at": "skill-lock 列出 %s（文件 %s）但磁盘无此 skill — 清理: asm remove %s -y",
 	"doctor.gate_global":    "skill %s 已全局关闭（工具均不可见）— 开启: asm enable %s",
 	"doctor.gate_tools":     "skill %s 已对工具关闭: %s — 开启: asm enable %s --tool <name>",
+	"doctor.bak_leftover":   "apply 残留备份目录（不会被迁移）— 确认无用后可手动删除: rm -rf %s",
 
 	// apply
 	"apply.need_yes":          "非 TTY 环境拒绝执行 apply，请加 --yes",
@@ -354,6 +355,7 @@ var en = map[string]string{
 	"doctor.lock_orphan_at": "skill-lock lists %s (file %s) but skill not on disk — clean: asm remove %s -y",
 	"doctor.gate_global":    "skill %s globally disabled — enable: asm enable %s",
 	"doctor.gate_tools":     "skill %s disabled for tools: %s — enable: asm enable %s --tool <name>",
+	"doctor.bak_leftover":   "leftover apply backup dir (never migrated) — remove if unused: rm -rf %s",
 
 	"apply.need_yes":         "refusing to apply without --yes when not a TTY",
 	"apply.about":            "\nAbout to apply: migrate=%d  link=%d (skips omitted)",

@@ -74,13 +74,17 @@ func walkRoot(r roots.Root, cfg *config.Config, vl *vendorlist.List) ([]Entry, e
 			return nil
 		}
 		rel, _ := filepath.Rel(base, path)
+		baseName := filepath.Base(path)
+		// apply leaves displaced real dirs as name.bak-<txID>; never treat as skills
+		if path != base && fsutil.IsASMBackupDir(baseName) {
+			return filepath.SkipDir
+		}
 		if rel != "." {
 			depth := strings.Count(rel, string(filepath.Separator)) + 1
 			if depth > 4 {
 				return filepath.SkipDir
 			}
 			// skip hidden system-ish dirs content already handled as vendor root
-			baseName := filepath.Base(path)
 			if baseName == "node_modules" || baseName == ".git" {
 				return filepath.SkipDir
 			}

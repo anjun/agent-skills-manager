@@ -96,7 +96,13 @@ func (l *List) AttachGrokProbe(cfg *config.Config) {
 
 // ClassifyVendor reports whether a skill instance is vendor-owned and why.
 // Priority: user ignore → user extra → path globs → grok probe (if OK) → name denylist.
-// When grok probe is OK, static names_by_tool["grok"] is NOT used (probe is truth).
+//
+// When grok probe is OK:
+//   - probe bundled path/name → vendor
+//   - names_global still applies (reserved product skill names; inspect labels
+//     user-dir overrides of platform skills as source.type=user, which must not
+//     be migrated into multi-tool ~/.agents/skills)
+//   - static names_by_tool["grok"] is NOT used (probe is truth for that list)
 func (l *List) ClassifyVendor(tool, name, path string) (vendor bool, reason string) {
 	name = strings.ToLower(strings.TrimSpace(name))
 	path = fsutil.Abs(path)
@@ -124,7 +130,12 @@ func (l *List) ClassifyVendor(tool, name, path string) (vendor bool, reason stri
 		if name != "" && l.GrokBundledName[name] {
 			return true, "grok inspect (bundled name)"
 		}
-		// probe succeeded: do not apply static grok denylist
+		// Reserved product names always apply — Grok puts same-named user overrides
+		// under ~/.grok/skills with source.type=user, hiding the bundled entry from inspect.
+		if name != "" && l.NamesGlobal[name] {
+			return true, "global denylist name"
+		}
+		// probe succeeded: do not apply static names_by_tool["grok"]
 		return false, ""
 	}
 

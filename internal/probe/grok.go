@@ -77,8 +77,39 @@ func ProbeGrok() *GrokBundled {
 	for _, n := range names {
 		out.Names[strings.ToLower(n)] = true
 	}
+	// inspect omits a bundled skill when a same-named user skill exists
+	// (user overrides under ~/.grok/skills). Index the filesystem cache so
+	// those platform skill *names* still classify as vendor and are not migrated.
+	indexGrokBundledFilesystem(out)
 	out.OK = true
 	return out
+}
+
+// indexGrokBundledFilesystem adds paths/names from ~/.grok/bundled/skills.
+func indexGrokBundledFilesystem(out *GrokBundled) {
+	root := filepath.Join(fsutil.Home(), ".grok", "bundled", "skills")
+	ents, err := os.ReadDir(root)
+	if err != nil {
+		return
+	}
+	for _, e := range ents {
+		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		dir := filepath.Join(root, e.Name())
+		// skill package must contain SKILL.md
+		md := filepath.Join(dir, "SKILL.md")
+		if st, err := os.Stat(md); err != nil || st.IsDir() {
+			// also accept skill.md
+			md2 := filepath.Join(dir, "skill.md")
+			if st2, err2 := os.Stat(md2); err2 != nil || st2.IsDir() {
+				continue
+			}
+		}
+		abs := fsutil.Abs(dir)
+		out.Paths[abs] = true
+		out.Names[strings.ToLower(e.Name())] = true
+	}
 }
 
 // ParseGrokInspectJSON extracts bundled skill dirs and names from inspect JSON.
