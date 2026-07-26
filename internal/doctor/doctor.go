@@ -18,11 +18,24 @@ import (
 	"github.com/anj/agent-skills-manager/internal/vendorlist"
 )
 
+// Actionable issue codes (TUI / automation can offer cleanup).
+const (
+	CodeBakLeftover = "bak_leftover" // apply-side <name>.bak-<txID> dirs
+	CodeBrokenLink  = "broken_link"  // dangling symlink
+)
+
 // Issue found by doctor.
 type Issue struct {
 	Severity string `json:"severity"` // error|warn|info
 	Path     string `json:"path"`
 	Message  string `json:"message"`
+	// Code marks issues that tools may auto-clean (empty = report only).
+	Code string `json:"code,omitempty"`
+}
+
+// Cleanable reports whether Cleanup may act on this issue.
+func (i Issue) Cleanable() bool {
+	return i.Code == CodeBakLeftover || i.Code == CodeBrokenLink
 }
 
 // Run checks broken symlinks, duplicate real copies, wire roots, and
@@ -48,9 +61,9 @@ func Run(cfg *config.Config, vl *vendorlist.List) ([]Issue, error) {
 			// project skills: only broken-link checks below if symlink
 			if e.Symlink {
 				if e.Target == "" {
-					issues = append(issues, Issue{"error", e.Path, tr.S("doctor.broken_no_target")})
+					issues = append(issues, Issue{Severity: "error", Path: e.Path, Message: tr.S("doctor.broken_no_target"), Code: CodeBrokenLink})
 				} else if _, err := os.Stat(e.Target); err != nil {
-					issues = append(issues, Issue{"error", e.Path, tr.S("doctor.broken_target", e.Target)})
+					issues = append(issues, Issue{Severity: "error", Path: e.Path, Message: tr.S("doctor.broken_target", e.Target), Code: CodeBrokenLink})
 				}
 			}
 			continue
@@ -58,11 +71,11 @@ func Run(cfg *config.Config, vl *vendorlist.List) ([]Issue, error) {
 		byName[e.Name] = append(byName[e.Name], e)
 		if e.Symlink {
 			if e.Target == "" {
-				issues = append(issues, Issue{"error", e.Path, tr.S("doctor.broken_no_target")})
+				issues = append(issues, Issue{Severity: "error", Path: e.Path, Message: tr.S("doctor.broken_no_target"), Code: CodeBrokenLink})
 				continue
 			}
 			if _, err := os.Stat(e.Target); err != nil {
-				issues = append(issues, Issue{"error", e.Path, tr.S("doctor.broken_target", e.Target)})
+				issues = append(issues, Issue{Severity: "error", Path: e.Path, Message: tr.S("doctor.broken_target", e.Target), Code: CodeBrokenLink})
 			}
 		}
 	}
@@ -82,13 +95,13 @@ func Run(cfg *config.Config, vl *vendorlist.List) ([]Issue, error) {
 					break
 				}
 			}
-			issues = append(issues, Issue{"warn", p, tr.S("doctor.dup_reals", reals)})
+			issues = append(issues, Issue{Severity: "warn", Path: p, Message: tr.S("doctor.dup_reals", reals)})
 		}
 	}
 	// wire roots missing; also flag apply-side *.bak-<txID> leftovers
 	for _, wr := range roots.WireRoots(cfg) {
 		if _, err := os.Stat(wr.Path); err != nil {
-			issues = append(issues, Issue{"info", wr.Path, tr.S("doctor.wire_missing")})
+			issues = append(issues, Issue{Severity: "info", Path: wr.Path, Message: tr.S("doctor.wire_missing")})
 			continue
 		}
 		ents, err := os.ReadDir(wr.Path)
@@ -100,12 +113,12 @@ func Run(cfg *config.Config, vl *vendorlist.List) ([]Issue, error) {
 				continue
 			}
 			p := filepath.Join(wr.Path, ent.Name())
-			issues = append(issues, Issue{"info", p, tr.S("doctor.bak_leftover", fsutil.RelHome(p))})
+			issues = append(issues, Issue{Severity: "info", Path: p, Message: tr.S("doctor.bak_leftover", fsutil.RelHome(p)), Code: CodeBakLeftover})
 		}
 	}
 	// agents dir
 	if _, err := os.Stat(cfg.AgentsSkills); err != nil {
-		issues = append(issues, Issue{"warn", cfg.AgentsSkills, tr.S("doctor.agents_missing")})
+		issues = append(issues, Issue{Severity: "warn", Path: cfg.AgentsSkills, Message: tr.S("doctor.agents_missing")})
 	}
 
 	// U2: skill-lock entries with no on-disk skill
@@ -125,7 +138,7 @@ func Run(cfg *config.Config, vl *vendorlist.List) ([]Issue, error) {
 				msg = tr.S("doctor.lock_orphan_at", name, fsutil.RelHome(le.LockPath), name)
 				path = le.LockPath + "#" + name
 			}
-			issues = append(issues, Issue{"warn", path, msg})
+			issues = append(issues, Issue{Severity: "warn", Path: path, Message: msg})
 		}
 	}
 
@@ -134,12 +147,12 @@ func Run(cfg *config.Config, vl *vendorlist.List) ([]Issue, error) {
 		for _, name := range gates.List() {
 			ent := gates.Get(name)
 			if ent.GlobalOff {
-				issues = append(issues, Issue{"info", "gate:" + name, tr.S("doctor.gate_global", name, name)})
+				issues = append(issues, Issue{Severity: "info", Path: "gate:" + name, Message: tr.S("doctor.gate_global", name, name)})
 				continue
 			}
 			if len(ent.ToolsOff) > 0 {
-				issues = append(issues, Issue{"info", "gate:" + name,
-					tr.S("doctor.gate_tools", name, strings.Join(ent.ToolsOff, ", "), name)})
+				issues = append(issues, Issue{Severity: "info", Path: "gate:" + name,
+					Message: tr.S("doctor.gate_tools", name, strings.Join(ent.ToolsOff, ", "), name)})
 			}
 		}
 	}
@@ -164,7 +177,7 @@ func Run(cfg *config.Config, vl *vendorlist.List) ([]Issue, error) {
 		if hint == "" {
 			continue
 		}
-		issues = append(issues, Issue{"info", contentPath, hint})
+		issues = append(issues, Issue{Severity: "info", Path: contentPath, Message: hint})
 	}
 
 	_ = filepath.Separator

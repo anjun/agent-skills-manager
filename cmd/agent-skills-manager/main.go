@@ -24,6 +24,7 @@ import (
 	"github.com/anj/agent-skills-manager/internal/scan"
 	"github.com/anj/agent-skills-manager/internal/selfupdate"
 	"github.com/anj/agent-skills-manager/internal/skillgate"
+	"github.com/anj/agent-skills-manager/internal/tui"
 	"github.com/anj/agent-skills-manager/internal/vendorlist"
 )
 
@@ -38,6 +39,21 @@ func main() {
 	// global flags may appear before or after the command
 	rest := parseGlobal(cfg, os.Args[1:])
 	if len(rest) == 0 {
+		if tui.ShouldOpen(cfg) {
+			vl, err := vendorlist.Load(embedded.VendorSkillsYAML, cfg)
+			if err != nil {
+				fail(cfg, err)
+			}
+			// Interactive menu may run scan/doctor; probe Grok once up front.
+			prog := progress.New(cfg.JSON)
+			if !cfg.NoProbe && cfg.ToolEnabled("grok") {
+				prog.Statusf("%s", cfg.T().S("progress.probe_grok"))
+				vl.AttachGrokProbe(cfg)
+			}
+			prog.Done()
+			os.Exit(tui.Run(cfg, vl, version))
+		}
+		fmt.Fprint(os.Stderr, cfg.T().S("main.need_tty"))
 		usage(cfg)
 		os.Exit(2)
 	}
@@ -662,9 +678,9 @@ func runSkillGate(cfg *config.Config, enable bool, args []string) {
 	}
 
 	type row struct {
-		Name string             `json:"name"`
-		Res  *skillgate.Result  `json:"result"`
-		Err  string             `json:"error,omitempty"`
+		Name string            `json:"name"`
+		Res  *skillgate.Result `json:"result"`
+		Err  string            `json:"error,omitempty"`
 	}
 	var rows []row
 	for _, name := range names {

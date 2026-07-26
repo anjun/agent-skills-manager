@@ -25,3 +25,6 @@
 .env.*
 *.pem
 *.key
+
+# Local design / planning docs (not shipped)
+/docs/

@@ -38,15 +38,18 @@ Each discovered skill directory (folder containing `SKILL.md`):
 ## CLI surface
 
 ```text
+asm                      # interactive TUI menu (TTY; mo-style) — recommended daily entry
 asm scan                 # discover + classify
 asm plan                 # proposed moves/symlinks (no writes)
 asm apply [--yes] [--strategy ...]
-asm sync                 # rescan → plan → apply (daily entry)
+asm sync                 # rescan → plan → apply (scripted daily entry)
 asm undo [id|last]
 asm doctor               # health + local provenance / stale-lock hints
 asm outdated [--all] [--update]
 asm upgrade [--check]    # self-update from GitHub Releases
 ```
+
+Bare `asm` opens Bubble Tea menu when stdout is a TTY and `--json` is not set; all subcommands remain for scripts.
 
 ### outdated
 

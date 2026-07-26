@@ -57,7 +57,10 @@ Pushing `main` runs tests only — **no release**.
 ## Quick start
 
 ```bash
-# Daily unify (recommended)
+# Interactive menu (recommended daily use; mo-style)
+asm                               # no args → menu: unify / updates / doctor / manage / upgrade
+
+# Daily unify (CLI)
 asm sync                          # rescan → plan preview → migrate + wire (same conflict rules as apply)
 asm sync -y                       # non-interactive (use --strategy on conflicts)
 
