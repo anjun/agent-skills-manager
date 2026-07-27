@@ -5,8 +5,42 @@ import (
 
 	"github.com/anj/agent-skills-manager/internal/config"
 	"github.com/anj/agent-skills-manager/internal/i18n"
+	"github.com/anj/agent-skills-manager/internal/outdated"
 	tea "github.com/charmbracelet/bubbletea"
 )
+
+func TestVisibleOutdatedPutsUpdatableFirst(t *testing.T) {
+	m := newModel(&Deps{Cfg: config.Default(), Version: "test"})
+	m.outdatedReport = &outdated.Result{
+		Entries: []outdated.Entry{
+			{Name: "current-a", Status: outdated.StatusCurrent},
+			{Name: "outdated-b", Status: outdated.StatusOutdated},
+			{Name: "current-c", Status: outdated.StatusCurrent},
+			{Name: "outdated-d", Status: outdated.StatusOutdated},
+			{Name: "unknown-e", Status: outdated.StatusUnknown},
+		},
+	}
+	m.showAll = false
+	vis := m.visibleOutdated()
+	// unknown hidden; updatable first, others keep relative order
+	want := []string{"outdated-b", "outdated-d", "current-a", "current-c"}
+	if len(vis) != len(want) {
+		t.Fatalf("len=%d want %d: %+v", len(vis), len(want), namesOf(vis))
+	}
+	for i, name := range want {
+		if vis[i].Name != name {
+			t.Errorf("pos %d: got %s want %s (full=%v)", i, vis[i].Name, name, namesOf(vis))
+		}
+	}
+}
+
+func namesOf(entries []outdated.Entry) []string {
+	out := make([]string, len(entries))
+	for i, e := range entries {
+		out[i] = e.Name
+	}
+	return out
+}
 
 func TestMainMenuStableIDs(t *testing.T) {
 	m := newModel(&Deps{Cfg: config.Default(), Version: "test"})

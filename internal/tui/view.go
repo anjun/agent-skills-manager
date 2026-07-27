@@ -232,7 +232,7 @@ func (m model) viewOutdated() string {
 		e := vis[i]
 		mark := " "
 		if m.selected[i] {
-			mark = "x"
+			mark = "✓"
 		}
 		st := statusShort(tr, e.Status)
 		line := fmt.Sprintf("[%s] %s  %s  %s", mark, st, e.Name, e.Message)
@@ -311,7 +311,7 @@ func (m model) viewDoctor() string {
 		mark := " "
 		if is.Cleanable() {
 			if m.doctorSelected[i] {
-				mark = "x"
+				mark = "✓"
 			} else {
 				mark = " "
 			}
@@ -387,7 +387,7 @@ func (m model) viewPick() string {
 			}
 			mark := " "
 			if sel {
-				mark = "x"
+				mark = "✓"
 			}
 			line = fmt.Sprintf("[%s] %s", mark, it.label)
 		}

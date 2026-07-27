@@ -921,14 +921,19 @@ func (m model) visibleOutdated() []outdated.Entry {
 	if m.outdatedReport == nil {
 		return nil
 	}
-	var out []outdated.Entry
+	// 可更新置顶，其余保持原相对顺序
+	var updatable, rest []outdated.Entry
 	for _, e := range m.outdatedReport.Entries {
 		if e.Status == outdated.StatusUnknown && !m.showAll {
 			continue
 		}
-		out = append(out, e)
+		if e.Status == outdated.StatusOutdated {
+			updatable = append(updatable, e)
+		} else {
+			rest = append(rest, e)
+		}
 	}
-	return out
+	return append(updatable, rest...)
 }
 
 func (m model) keyManage(key string) (tea.Model, tea.Cmd) {
