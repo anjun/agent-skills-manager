@@ -156,6 +156,32 @@ func TestApplyUpdatesCancel(t *testing.T) {
 	}
 }
 
+func TestChildStreamWritersRedirect(t *testing.T) {
+	var buf bytes.Buffer
+	outW, errW := childStreamWriters(&buf)
+	if outW != &buf || errW != &buf {
+		t.Fatalf("redirected stdout should fold stderr into the same writer")
+	}
+	outW, errW = childStreamWriters(os.Stdout)
+	if outW != os.Stdout || errW != os.Stderr {
+		t.Fatalf("TTY stdout should keep stderr on os.Stderr")
+	}
+}
+
+func TestRunCmdStreamingWritesOnlyToProvidedWriters(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	got, err := runCmdStreaming(&out, &errBuf, "", "/bin/echo", "hello-asm-update")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "hello-asm-update") {
+		t.Fatalf("captured=%q", got)
+	}
+	if !strings.Contains(out.String(), "hello-asm-update") {
+		t.Fatalf("stdout writer=%q", out.String())
+	}
+}
+
 func TestApplyUpdatesNameFilter(t *testing.T) {
 	report := &Result{
 		Entries: []Entry{

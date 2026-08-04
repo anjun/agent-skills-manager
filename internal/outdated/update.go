@@ -63,7 +63,13 @@ func ApplyUpdates(report *Result, opt UpdateOptions) *UpdateResult {
 		opt.Stdin = os.Stdin
 	}
 	if opt.RunCmd == nil {
-		opt.RunCmd = defaultRunCmd
+		// Stream child I/O to opt.Stdout. When the caller redirects away from the
+		// real terminal (TUI / tests), also fold stderr there so progress bars
+		// with \r cannot corrupt the alternate screen.
+		outW, errW := childStreamWriters(opt.Stdout)
+		opt.RunCmd = func(dir, name string, args ...string) (string, error) {
+			return runCmdStreaming(outW, errW, dir, name, args...)
+		}
 	}
 	if opt.LookPath == nil {
 		opt.LookPath = exec.LookPath
@@ -310,17 +316,35 @@ func updateKnown(e Entry, src knownsource.Source, opt UpdateOptions) UpdateItem 
 	return it
 }
 
-func defaultRunCmd(dir, name string, args ...string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+// childStreamWriters picks where subprocess stdout/stderr should go.
+// Real-TTY CLI keeps stderr separate; redirected runs (TUI) must not touch the TTY.
+func childStreamWriters(stdout io.Writer) (outW, errW io.Writer) {
+	if stdout == nil {
+		stdout = os.Stdout
+	}
+	if f, ok := stdout.(*os.File); ok && f == os.Stdout {
+		return stdout, os.Stderr
+	}
+	return stdout, stdout
+}
+
+func runCmdStreaming(stdout, stderr io.Writer, dir, name string, args ...string) (string, error) {
+	// Known CLI upgraders (e.g. dws) may download multiple archives; keep headroom.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, name, args...)
 	if dir != "" {
 		cmd.Dir = dir
 	}
 	var buf bytes.Buffer
-	// stream to user + capture
-	cmd.Stdout = io.MultiWriter(&buf, os.Stdout)
-	cmd.Stderr = io.MultiWriter(&buf, os.Stderr)
+	if stdout == nil {
+		stdout = io.Discard
+	}
+	if stderr == nil {
+		stderr = io.Discard
+	}
+	cmd.Stdout = io.MultiWriter(&buf, stdout)
+	cmd.Stderr = io.MultiWriter(&buf, stderr)
 	err := cmd.Run()
 	out := strings.TrimSpace(buf.String())
 	if err != nil {
