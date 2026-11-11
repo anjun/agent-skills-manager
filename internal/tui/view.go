@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/anj/agent-skills-manager/internal/fsutil"
 	"github.com/anj/agent-skills-manager/internal/outdated"
 )
 
@@ -318,7 +317,7 @@ func (m model) viewDoctor() string {
 		} else {
 			mark = "-"
 		}
-		path := fsutil.RelHome(is.Path)
+		path := is.DisplayPath()
 		line := fmt.Sprintf("[%s] %s  %s", mark, tr.SeverityLabel(is.Severity), path)
 		// second line truncated message
 		msg := is.Message

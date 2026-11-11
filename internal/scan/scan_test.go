@@ -7,6 +7,7 @@ import (
 
 	"github.com/anj/agent-skills-manager/internal/config"
 	"github.com/anj/agent-skills-manager/internal/fsutil"
+	"github.com/anj/agent-skills-manager/internal/skillgate"
 	"github.com/anj/agent-skills-manager/internal/vendorlist"
 )
 
@@ -132,5 +133,57 @@ func TestRunSkipsASMBackupDirs(t *testing.T) {
 	}
 	if res.Entries[0].Name != "demo" {
 		t.Fatalf("got %s", res.Entries[0].Name)
+	}
+}
+
+func TestScanDisabledLinksAndExternalContent(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	cfg := config.Default()
+	cfg.NoProject = true
+	cfg.NoProbe = true
+	cfg.OnlyTools = []string{"claude"}
+	canonical := filepath.Join(cfg.AgentsSkills, "demo")
+	external := filepath.Join(home, "external")
+	toolRoot := filepath.Join(home, ".claude", "skills")
+	for _, p := range []string{canonical, external, toolRoot} {
+		if err := os.MkdirAll(p, 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for p, name := range map[string]string{canonical: "demo", external: "external"} {
+		if err := os.WriteFile(filepath.Join(p, "SKILL.md"), []byte("---\nname: "+name+"\n---\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(external, filepath.Join(toolRoot, "external")); err != nil {
+		t.Fatal(err)
+	}
+	gates, err := skillgate.Open(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = gates.Disable("demo", []string{"claude"}); err != nil {
+		t.Fatal(err)
+	}
+	vl, err := vendorlist.Load(nil, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := Run(cfg, vl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.WireGaps) > 0 {
+		t.Errorf("disabled tool falsely reported missing: %+v", res.WireGaps)
+	}
+	found := false
+	for _, e := range res.Entries {
+		if e.Name == "external" && e.Symlink {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("live symlink skill missing from scan")
 	}
 }

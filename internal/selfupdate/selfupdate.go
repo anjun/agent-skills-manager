@@ -20,9 +20,12 @@ const (
 	// DefaultRepo is the GitHub owner/repo for releases.
 	DefaultRepo = "anjun/agent-skills-manager"
 	// MacOSZip is the unified macOS installer package (arm64 + amd64).
-	MacOSZip = "asm-macos.zip"
-	userAgent   = "agent-skills-manager"
-	httpTimeout = 60 * time.Second
+	MacOSZip        = "asm-macos.zip"
+	userAgent       = "agent-skills-manager"
+	httpTimeout     = 60 * time.Second
+	downloadTimeout = 15 * time.Minute
+	// UpgradeTimeout includes metadata lookup, download and installation.
+	UpgradeTimeout = 20 * time.Minute
 )
 
 // HTTPClient is overridable in tests.
@@ -336,7 +339,10 @@ func fetchLatestRelease(ctx context.Context, repo, token string) (*ghRelease, er
 		return nil, err
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	if err != nil {
+		return nil, fmt.Errorf("read release metadata: %w", err)
+	}
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, fmt.Errorf("no releases found for %s (create a GitHub Release first)", repo)
 	}
@@ -370,7 +376,10 @@ func downloadAsset(ctx context.Context, asset ghAsset, token string) (tmpPath st
 		return "", err
 	}
 	setGitHubHeaders(req, token, true)
-	resp, err := HTTPClient.Do(req)
+	// Preserve transport/auth behavior but give large downloads their own budget.
+	client := *HTTPClient
+	client.Timeout = downloadTimeout
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -384,10 +393,16 @@ func downloadAsset(ctx context.Context, asset ghAsset, token string) (tmpPath st
 		return "", err
 	}
 	tmpPath = f.Name()
-	if _, err := io.Copy(f, resp.Body); err != nil {
+	n, err := io.Copy(f, resp.Body)
+	if err != nil {
 		f.Close()
 		os.Remove(tmpPath)
-		return "", err
+		return "", fmt.Errorf("下载 %s 中断（已下载 %d / %d 字节）: %w", asset.Name, n, asset.Size, err)
+	}
+	if asset.Size > 0 && n != asset.Size {
+		f.Close()
+		os.Remove(tmpPath)
+		return "", fmt.Errorf("download %s incomplete: got %d bytes, expected %d", asset.Name, n, asset.Size)
 	}
 	if err := f.Close(); err != nil {
 		os.Remove(tmpPath)

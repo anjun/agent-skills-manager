@@ -171,3 +171,19 @@ func TestPlanRespectsToolOff(t *testing.T) {
 		t.Fatal(s2.Get("a"))
 	}
 }
+
+func TestDisableMissingDoesNotCreateGate(t *testing.T) {
+	cfg := testCfg(t)
+	s, err := Open(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tools := range [][]string{nil, {"claude"}} {
+		if _, err := s.Disable("missing", tools); err == nil {
+			t.Error("missing skill accepted")
+		}
+	}
+	if len(s.List()) != 0 {
+		t.Fatalf("phantom gates created: %v", s.List())
+	}
+}

@@ -92,8 +92,8 @@ func removeBrokenLink(p string) error {
 	if !filepath.IsAbs(check) {
 		check = filepath.Join(filepath.Dir(p), target)
 	}
-	if _, err := os.Stat(check); err == nil {
-		return fmt.Errorf("refusing: symlink target still exists")
+	if _, err := os.Stat(check); !os.IsNotExist(err) {
+		return fmt.Errorf("refusing: symlink target is not confirmed missing: %v", err)
 	}
 	return os.Remove(p)
 }

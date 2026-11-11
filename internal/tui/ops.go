@@ -179,19 +179,9 @@ func (d *Deps) listGateEntries() ([]gateRow, error) {
 	if err != nil {
 		return nil, err
 	}
-	active, err := d.listActiveSkills()
-	if err != nil {
-		return nil, err
-	}
-	present := map[string]bool{}
-	for _, name := range active {
-		present[strings.ToLower(name)] = true
-	}
 	var rows []gateRow
 	for _, n := range store.List() {
-		_, activeErr := os.Stat(filepath.Join(d.Cfg.AgentsSkills, n, "SKILL.md"))
-		_, parkedErr := os.Stat(filepath.Join(store.DisabledDir, n, "SKILL.md"))
-		if !present[strings.ToLower(n)] && activeErr != nil && parkedErr != nil {
+		if !store.CanEnable(n) {
 			continue
 		}
 		e := store.Get(n)
@@ -268,7 +258,7 @@ func (d *Deps) upgradeCheck() (*selfupdate.Result, error) {
 }
 
 func (d *Deps) upgradeApply() (*selfupdate.Result, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), selfupdate.UpgradeTimeout)
 	defer cancel()
 	return selfupdate.Run(ctx, selfupdate.Options{
 		Current:   d.Version,

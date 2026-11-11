@@ -33,6 +33,14 @@ type Issue struct {
 	Code string `json:"code,omitempty"`
 }
 
+// DisplayPath preserves record identifiers that are not filesystem paths.
+func (i Issue) DisplayPath() string {
+	if strings.HasPrefix(i.Path, "gate:") || strings.HasPrefix(i.Path, "skill-lock:") {
+		return i.Path
+	}
+	return fsutil.RelHome(i.Path)
+}
+
 // Cleanable reports whether Cleanup may act on this issue.
 func (i Issue) Cleanable() bool {
 	return i.Code == CodeBakLeftover || i.Code == CodeBrokenLink
@@ -121,6 +129,17 @@ func Run(cfg *config.Config, vl *vendorlist.List) ([]Issue, error) {
 		issues = append(issues, Issue{Severity: "warn", Path: cfg.AgentsSkills, Message: tr.S("doctor.agents_missing")})
 	}
 
+	gates, err := skillgate.Open(cfg)
+	if err != nil {
+		return nil, err
+	}
+	for _, name := range gates.List() {
+		if gates.HasStoredContent(name) || gates.CanEnable(name) {
+			seenSkill[strings.ToLower(name)] = true
+		}
+	}
+	issues = append(issues, brokenSkillLinks(cfg)...)
+
 	// U2: skill-lock entries with no on-disk skill
 	if lockIdx != nil {
 		var orphans []string
@@ -143,17 +162,23 @@ func Run(cfg *config.Config, vl *vendorlist.List) ([]Issue, error) {
 	}
 
 	// skill gates (disabled globally or per-tool)
-	if gates, err := skillgate.Open(cfg); err == nil {
-		for _, name := range gates.List() {
-			ent := gates.Get(name)
-			if ent.GlobalOff {
-				issues = append(issues, Issue{Severity: "info", Path: "gate:" + name, Message: tr.S("doctor.gate_global", name, name)})
-				continue
-			}
-			if len(ent.ToolsOff) > 0 {
-				issues = append(issues, Issue{Severity: "info", Path: "gate:" + name,
-					Message: tr.S("doctor.gate_tools", name, strings.Join(ent.ToolsOff, ", "), name)})
-			}
+	for _, name := range gates.List() {
+		if !gates.HasContent(name) {
+			issues = append(issues, Issue{Severity: "warn", Path: "gate:" + name, Message: tr.S("doctor.gate_orphan", name, name)})
+			continue
+		}
+		if !gates.CanEnable(name) {
+			issues = append(issues, Issue{Severity: "warn", Path: "gate:" + name, Message: tr.S("doctor.gate_restore", name)})
+			continue
+		}
+		ent := gates.Get(name)
+		if ent.GlobalOff {
+			issues = append(issues, Issue{Severity: "info", Path: "gate:" + name, Message: tr.S("doctor.gate_global", name, name)})
+			continue
+		}
+		if len(ent.ToolsOff) > 0 {
+			issues = append(issues, Issue{Severity: "info", Path: "gate:" + name,
+				Message: tr.S("doctor.gate_tools", name, strings.Join(ent.ToolsOff, ", "), name)})
 		}
 	}
 
@@ -233,4 +258,45 @@ func frontmatterSource(sk *skill.Skill) string {
 		}
 	}
 	return ""
+}
+
+// Walk only skill-container levels, without following directory symlinks or
+// inspecting links inside skill packages and vendor/system directories.
+func brokenSkillLinks(cfg *config.Config) []Issue {
+	var issues []Issue
+	seen := map[string]bool{}
+	for _, root := range roots.Existing(roots.DefaultRoots(cfg)) {
+		if root.Kind == "vendor" {
+			continue
+		}
+		_ = filepath.WalkDir(root.Path, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			rel, _ := filepath.Rel(root.Path, path)
+			if d.IsDir() {
+				if path != root.Path && (strings.HasPrefix(d.Name(), ".") || d.Name() == "node_modules" || fsutil.IsASMBackupDir(d.Name()) || strings.Count(rel, string(filepath.Separator)) >= 4) {
+					return filepath.SkipDir
+				}
+				if _, ok := skill.FindSkillMD(path); ok {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if d.Type()&os.ModeSymlink == 0 || seen[path] {
+				return nil
+			}
+			seen[path] = true
+			if _, err := os.Stat(path); !os.IsNotExist(err) {
+				return nil
+			}
+			target, err := fsutil.ReadLinkAbs(path)
+			if err != nil {
+				return nil
+			}
+			issues = append(issues, Issue{Severity: "error", Path: path, Message: cfg.T().S("doctor.broken_target", target), Code: CodeBrokenLink})
+			return nil
+		})
+	}
+	return issues
 }

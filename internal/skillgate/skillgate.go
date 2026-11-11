@@ -17,6 +17,7 @@ import (
 	"github.com/anj/agent-skills-manager/internal/config"
 	"github.com/anj/agent-skills-manager/internal/fsutil"
 	"github.com/anj/agent-skills-manager/internal/roots"
+	"github.com/anj/agent-skills-manager/internal/skill"
 )
 
 const (
@@ -162,6 +163,48 @@ func (s *Store) StoredPaths(name string) []string {
 	return paths
 }
 
+// HasStoredContent includes globally parked skills and per-tool backup copies.
+func (s *Store) HasStoredContent(name string) bool {
+	for _, path := range s.StoredPaths(name) {
+		if _, ok := skill.FindSkillMD(path); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// CanEnable requires canonical content or a globally parked skill.
+func (s *Store) CanEnable(name string) bool {
+	if filepath.Base(name) != name || name == "." || name == ".." {
+		return false
+	}
+	for _, root := range []string{s.AgentsDir, s.DisabledDir} {
+		if _, ok := skill.FindSkillMD(filepath.Join(root, name)); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// HasContent checks only managed global locations, excluding same-name project skills.
+func (s *Store) HasContent(name string) bool {
+	if name == "" || name == "." || name == ".." || filepath.Base(name) != name {
+		return false
+	}
+	if s.CanEnable(name) || s.HasStoredContent(name) {
+		return true
+	}
+	for _, root := range roots.DefaultRoots(s.cfg) {
+		if root.Kind == "vendor" || root.Kind == "project" {
+			continue
+		}
+		if _, ok := skill.FindSkillMD(filepath.Join(root.Path, name)); ok {
+			return true
+		}
+	}
+	return false
+}
+
 // Forget clears only the requested preferences after successful uninstall.
 func (s *Store) Forget(names []string) error {
 	for _, name := range names {
@@ -193,6 +236,9 @@ func (s *Store) Disable(name string, tools []string) (*Result, error) {
 	tools, err := parseTools(tools)
 	if err != nil {
 		return nil, err
+	}
+	if !s.HasContent(name) {
+		return nil, fmt.Errorf("skill %q not found; cannot disable a missing skill", name)
 	}
 	res := &Result{Name: name}
 	e := s.Get(key)
@@ -300,8 +346,6 @@ func (s *Store) Enable(name string, tools []string) (*Result, error) {
 		if err := s.Save(); err != nil {
 			return nil, err
 		}
-		// temporary clear so linkTools does not skip
-		s.file.Skills = s.file.Skills // already deleted
 		linked, err := s.linkTools(name, KnownTools)
 		if err != nil {
 			return nil, err

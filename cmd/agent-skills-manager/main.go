@@ -9,7 +9,6 @@ import (
 	"sort"
 	"strings"
 	"text/tabwriter"
-	"time"
 
 	"github.com/anj/agent-skills-manager/embedded"
 	"github.com/anj/agent-skills-manager/internal/apply"
@@ -479,7 +478,7 @@ func runDoctor(cfg *config.Config, vl *vendorlist.List) {
 		return
 	}
 	for _, is := range issues {
-		fmt.Printf("%-6s  %s\n        %s\n", tr.SeverityLabel(is.Severity), shortPath(is.Path), is.Message)
+		fmt.Printf("%-6s  %s\n        %s\n", tr.SeverityLabel(is.Severity), is.DisplayPath(), is.Message)
 	}
 	fmt.Print(tr.S("doctor.count", len(issues)))
 	fmt.Println()
@@ -764,6 +763,9 @@ func runGates(cfg *config.Config, args []string) {
 	}
 	var items []item
 	for _, n := range names {
+		if !store.CanEnable(n) {
+			continue
+		}
 		e := store.Get(n)
 		items = append(items, item{Name: n, GlobalOff: e.GlobalOff, ToolsOff: e.ToolsOff})
 	}
@@ -843,7 +845,7 @@ func runUpgrade(cfg *config.Config, args []string) {
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), selfupdate.UpgradeTimeout)
 	defer cancel()
 	if checkOnly {
 		prog.Statusf("%s", tr.S("progress.upgrade_check"))

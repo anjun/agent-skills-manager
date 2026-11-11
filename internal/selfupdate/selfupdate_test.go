@@ -4,6 +4,8 @@ import (
 	"archive/zip"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,6 +13,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestCompareVersions(t *testing.T) {
@@ -139,4 +142,62 @@ func (r rewriteAPI) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	nr.Header = req.Header.Clone()
 	return http.DefaultTransport.RoundTrip(nr)
+}
+
+func TestDownloadOutlastsMetadataTimeout(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "first")
+		w.(http.Flusher).Flush()
+		select {
+		case <-time.After(300 * time.Millisecond):
+			fmt.Fprint(w, "last")
+		case <-r.Context().Done():
+		}
+	}))
+	defer srv.Close()
+	old := HTTPClient
+	HTTPClient = &http.Client{Timeout: 100 * time.Millisecond}
+	defer func() { HTTPClient = old }()
+	path, err := downloadAsset(context.Background(), ghAsset{Name: "slow", URL: srv.URL, Size: 9}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(path)
+	data, err := os.ReadFile(path)
+	if err != nil || string(data) != "firstlast" {
+		t.Fatalf("%q %v", data, err)
+	}
+}
+
+func TestDownloadCancellationAndIncompleteBody(t *testing.T) {
+	for _, cancelRequest := range []bool{true, false} {
+		t.Run(fmt.Sprint(cancelRequest), func(t *testing.T) {
+			temp := t.TempDir()
+			t.Setenv("TMPDIR", temp)
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprint(w, "part")
+				w.(http.Flusher).Flush()
+				if cancelRequest {
+					<-r.Context().Done()
+				}
+			}))
+			defer srv.Close()
+			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+			defer cancel()
+			path, err := downloadAsset(ctx, ghAsset{Name: "test", URL: srv.URL, Size: 100}, "")
+			if err == nil || path != "" {
+				t.Fatalf("expected incomplete download failure: %q %v", path, err)
+			}
+			if cancelRequest && !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("lost cancellation: %v", err)
+			}
+			files, err := os.ReadDir(temp)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(files) > 0 {
+				t.Fatalf("partial files leaked: %v", files)
+			}
+		})
+	}
 }

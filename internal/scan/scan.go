@@ -10,6 +10,7 @@ import (
 	"github.com/anj/agent-skills-manager/internal/fsutil"
 	"github.com/anj/agent-skills-manager/internal/roots"
 	"github.com/anj/agent-skills-manager/internal/skill"
+	"github.com/anj/agent-skills-manager/internal/skillgate"
 	"github.com/anj/agent-skills-manager/internal/vendorlist"
 )
 
@@ -123,11 +124,15 @@ func ComputeWireGaps(cfg *config.Config, res *Result) []WireGap {
 	}
 	sort.Strings(names)
 
+	gates, _ := skillgate.Open(cfg)
 	var gaps []WireGap
 	for _, name := range names {
 		dest := agentsPath[name]
 		g := WireGap{Name: name, AgentsPath: dest}
 		for _, wr := range wireRoots {
+			if gates != nil && gates.IsToolOff(name, wr.Tool) {
+				continue
+			}
 			linkPath := filepath.Join(wr.Path, name)
 			switch fsutil.SkillLinkStateOf(linkPath, dest) {
 			case fsutil.LinkOK:
@@ -164,7 +169,7 @@ func walkRoot(r roots.Root, cfg *config.Config, vl *vendorlist.List) ([]Entry, e
 		if err != nil {
 			return nil
 		}
-		if !d.IsDir() {
+		if !d.IsDir() && d.Type()&os.ModeSymlink == 0 {
 			return nil
 		}
 		rel, _ := filepath.Rel(base, path)
@@ -195,8 +200,11 @@ func walkRoot(r roots.Root, cfg *config.Config, vl *vendorlist.List) ([]Entry, e
 		e := classifyPath(path, r, cfg, vl)
 		if e != nil {
 			out = append(out, *e)
-			// don't descend into a skill package
-			return filepath.SkipDir
+			// Do not descend into packages; SkipDir on a symlink would skip siblings.
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
 		}
 		return nil
 	})

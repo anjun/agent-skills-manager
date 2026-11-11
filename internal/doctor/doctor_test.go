@@ -8,6 +8,7 @@ import (
 
 	"github.com/anj/agent-skills-manager/internal/config"
 	"github.com/anj/agent-skills-manager/internal/i18n"
+	"github.com/anj/agent-skills-manager/internal/skillgate"
 	"github.com/anj/agent-skills-manager/internal/vendorlist"
 )
 
@@ -55,4 +56,87 @@ func TestRunWithEmptyHomeish(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = issues
+}
+
+func TestGateHealthMatchesDisk(t *testing.T) {
+	for _, mode := range []string{"orphan", "parked", "broken", "backup"} {
+		t.Run(mode, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			cfg := config.Default()
+			cfg.NoProject = true
+			cfg.NoProbe = true
+			p := filepath.Join(cfg.AgentsSkills, "demo")
+			if err := os.MkdirAll(p, 0755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(p, "SKILL.md"), []byte("---\nname: demo\n---\n"), 0644); err != nil {
+				t.Fatal(err)
+			}
+			g, err := skillgate.Open(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if mode == "parked" {
+				if _, err := g.Disable("demo", nil); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(home, ".agents", ".skill-lock.json"), []byte(`{"version":3,"skills":{"demo":{"source":"x/y"}}}`), 0644); err != nil {
+					t.Fatal(err)
+				}
+			} else if mode == "orphan" || mode == "backup" {
+				if _, err := g.Disable("demo", []string{"claude"}); err != nil {
+					t.Fatal(err)
+				}
+				if mode == "backup" {
+					backup := filepath.Join(g.DisabledDir, "_toolbak", "claude__demo")
+					if err := os.MkdirAll(filepath.Dir(backup), 0755); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.Rename(p, backup); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if err := os.RemoveAll(p); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				if err := os.Symlink(filepath.Join(home, "missing"), filepath.Join(cfg.AgentsSkills, "broken")); err != nil {
+					t.Fatal(err)
+				}
+			}
+			vl, err := vendorlist.Load(nil, cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			issues, err := Run(cfg, vl)
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, is := range issues {
+				if mode == "orphan" && is.Path == "gate:demo" {
+					found = true
+					if strings.Contains(is.Message, "asm enable") || !strings.Contains(is.Message, "asm remove") {
+						t.Errorf("misleading orphan advice: %s", is.Message)
+					}
+				}
+				if mode == "backup" && is.Path == "gate:demo" {
+					found = true
+					if strings.Contains(is.Message, "asm enable") || strings.Contains(is.Message, "asm remove") {
+						t.Errorf("misleading backup advice: %s", is.Message)
+					}
+				}
+				if mode == "parked" && strings.Contains(is.Message, "skill-lock") {
+					t.Errorf("parked skill reported missing: %s", is.Message)
+				}
+				if mode == "broken" && is.Code == CodeBrokenLink {
+					found = true
+				}
+			}
+			if mode != "parked" && !found {
+				t.Errorf("missing %s finding: %+v", mode, issues)
+			}
+		})
+	}
 }
