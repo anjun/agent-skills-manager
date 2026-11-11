@@ -150,17 +150,37 @@ func (s *Store) List() []string {
 	return names
 }
 
+// StoredPaths returns content locations owned by the gate store for one skill.
+func (s *Store) StoredPaths(name string) []string {
+	if name == "" || name == "." || name == ".." || name == "_toolbak" || filepath.Base(name) != name {
+		return nil
+	}
+	paths := []string{filepath.Join(s.DisabledDir, name)}
+	for _, tool := range KnownTools {
+		paths = append(paths, filepath.Join(s.DisabledDir, "_toolbak", tool+"__"+name))
+	}
+	return paths
+}
+
+// Forget clears only the requested preferences after successful uninstall.
+func (s *Store) Forget(names []string) error {
+	for _, name := range names {
+		delete(s.file.Skills, strings.ToLower(strings.TrimSpace(name)))
+	}
+	return s.Save()
+}
+
 // Result describes one disable/enable operation.
 type Result struct {
-	Name        string   `json:"name"`
-	GlobalOff   bool     `json:"global_off"`
-	ToolsOff    []string `json:"tools_off,omitempty"`
-	Removed     []string `json:"removed,omitempty"`      // paths removed (links)
-	Restored    string   `json:"restored,omitempty"`     // agents path after global enable
-	Parked      string   `json:"parked,omitempty"`       // disabled-skills path after global disable
-	Linked      []string `json:"linked,omitempty"`       // paths created
-	Message     string   `json:"message,omitempty"`
-	Already     bool     `json:"already,omitempty"`
+	Name      string   `json:"name"`
+	GlobalOff bool     `json:"global_off"`
+	ToolsOff  []string `json:"tools_off,omitempty"`
+	Removed   []string `json:"removed,omitempty"`  // paths removed (links)
+	Restored  string   `json:"restored,omitempty"` // agents path after global enable
+	Parked    string   `json:"parked,omitempty"`   // disabled-skills path after global disable
+	Linked    []string `json:"linked,omitempty"`   // paths created
+	Message   string   `json:"message,omitempty"`
+	Already   bool     `json:"already,omitempty"`
 }
 
 // Disable turns a skill off globally (tools empty) or for listed tools.

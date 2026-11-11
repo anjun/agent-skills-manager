@@ -1,6 +1,8 @@
 package remove
 
 import (
+	"github.com/anj/agent-skills-manager/internal/skillgate"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -188,5 +190,50 @@ func TestRunOrphanKeepLockDoesNotTouchLock(t *testing.T) {
 	b, _ := os.ReadFile(lock)
 	if !strings.Contains(string(b), `"ghost"`) {
 		t.Fatalf("lock was modified with --keep-lock: %s", b)
+	}
+}
+
+func TestRemovePreservesOtherGatesAndContent(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	cfg := config.Default()
+	cfg.NoProject = true
+	cfg.NoProbe = true
+	vl, err := vendorlist.Load(nil, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gates, err := skillgate.Open(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"demo", "keep-me"} {
+		p := filepath.Join(cfg.AgentsSkills, name)
+		if err := os.MkdirAll(p, 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(p, "SKILL.md"), []byte("---\nname: "+name+"\n---\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := gates.Disable(name, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	res, err := Run(cfg, vl, Options{Names: []string{"demo"}, Yes: true, KeepLock: true, Stdout: io.Discard})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Failed) > 0 {
+		t.Fatal(res.Failed)
+	}
+	gates, err = skillgate.Open(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gates.IsGlobalOff("demo") || !gates.IsGlobalOff("keep-me") {
+		t.Fatalf("wrong remaining gates: %v", gates.List())
+	}
+	if _, err := os.Stat(filepath.Join(gates.DisabledDir, "keep-me", "SKILL.md")); err != nil {
+		t.Fatal(err)
 	}
 }

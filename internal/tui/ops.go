@@ -119,6 +119,28 @@ func (d *Deps) updateSkills(names []string) (*outdated.UpdateResult, string, err
 }
 
 func (d *Deps) listRemovableSkills() ([]string, error) {
+	names, err := d.listActiveSkills()
+	if err != nil {
+		return nil, err
+	}
+	store, err := skillgate.Open(d.Cfg)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	for _, name := range names {
+		seen[strings.ToLower(name)] = true
+	}
+	for _, name := range store.List() {
+		if !seen[strings.ToLower(name)] {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names, nil
+}
+
+func (d *Deps) listActiveSkills() ([]string, error) {
 	res, err := scan.Run(d.Cfg, d.VL)
 	if err != nil {
 		return nil, err
@@ -157,8 +179,21 @@ func (d *Deps) listGateEntries() ([]gateRow, error) {
 	if err != nil {
 		return nil, err
 	}
+	active, err := d.listActiveSkills()
+	if err != nil {
+		return nil, err
+	}
+	present := map[string]bool{}
+	for _, name := range active {
+		present[strings.ToLower(name)] = true
+	}
 	var rows []gateRow
 	for _, n := range store.List() {
+		_, activeErr := os.Stat(filepath.Join(d.Cfg.AgentsSkills, n, "SKILL.md"))
+		_, parkedErr := os.Stat(filepath.Join(store.DisabledDir, n, "SKILL.md"))
+		if !present[strings.ToLower(n)] && activeErr != nil && parkedErr != nil {
+			continue
+		}
 		e := store.Get(n)
 		rows = append(rows, gateRow{
 			Name:      n,
@@ -196,7 +231,7 @@ func (d *Deps) listCanonicalSkills() ([]string, error) {
 	ents, err := os.ReadDir(d.Cfg.AgentsSkills)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return d.listRemovableSkills()
+			return d.listActiveSkills()
 		}
 		return nil, err
 	}
@@ -217,7 +252,7 @@ func (d *Deps) listCanonicalSkills() ([]string, error) {
 		names = append(names, name)
 	}
 	if len(names) == 0 {
-		return d.listRemovableSkills()
+		return d.listActiveSkills()
 	}
 	sort.Strings(names)
 	return names, nil

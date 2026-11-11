@@ -14,6 +14,7 @@ import (
 	"github.com/anj/agent-skills-manager/internal/fsutil"
 	"github.com/anj/agent-skills-manager/internal/roots"
 	"github.com/anj/agent-skills-manager/internal/scan"
+	"github.com/anj/agent-skills-manager/internal/skillgate"
 	"github.com/anj/agent-skills-manager/internal/skilllock"
 	"github.com/anj/agent-skills-manager/internal/vendorlist"
 )
@@ -28,8 +29,8 @@ type Options struct {
 	KeepLock bool
 	// IncludeProject also removes ClassProject entries (default false).
 	IncludeProject bool
-	Stdin  io.Reader
-	Stdout io.Writer
+	Stdin          io.Reader
+	Stdout         io.Writer
 }
 
 // PlanItem is one filesystem path that will be removed.
@@ -43,10 +44,12 @@ type PlanItem struct {
 
 // Result of remove.
 type Result struct {
-	Planned      []PlanItem `json:"planned"`
-	Removed      []string   `json:"removed"`
-	Failed       []string   `json:"failed,omitempty"`
-	Skipped      []string   `json:"skipped,omitempty"` // vendor / project / truly missing
+	Planned []PlanItem `json:"planned"`
+	Removed []string   `json:"removed"`
+	Failed  []string   `json:"failed,omitempty"`
+	Skipped []string   `json:"skipped,omitempty"` // vendor / project / truly missing
+	// GateNames lists preferences to clear on successful uninstall.
+	GateNames []string `json:"gate_names,omitempty"`
 	// LockOnly: requested names absent from disk but present in skill-lock (orphan entries).
 	LockOnly     []string `json:"lock_only,omitempty"`
 	LockModified []string `json:"lock_modified,omitempty"`
@@ -143,6 +146,39 @@ func Plan(cfg *config.Config, vl *vendorlist.List, names []string, includeProjec
 		}
 	}
 
+	// Disabled content is outside normal scan roots but still belongs to the skill.
+	gates, err := skillgate.Open(cfg)
+	if err != nil {
+		return nil, err
+	}
+	for _, name := range gates.List() {
+		if want[strings.ToLower(name)] {
+			out.GateNames = append(out.GateNames, name)
+			foundName[strings.ToLower(name)] = true
+		}
+	}
+	for name := range want {
+		for _, p := range gates.StoredPaths(name) {
+			st, err := os.Lstat(p)
+			if os.IsNotExist(err) {
+				continue
+			}
+			if err != nil {
+				return nil, err
+			}
+			if seenPath[p] {
+				continue
+			}
+			seenPath[p] = true
+			foundName[name] = true
+			kind := "directory"
+			if st.Mode()&os.ModeSymlink != 0 {
+				kind = "symlink"
+			}
+			out.Planned = append(out.Planned, PlanItem{Name: name, Path: p, Class: scan.ClassUser, Tool: "disabled", Kind: kind})
+		}
+	}
+
 	// Orphan skill-lock entries: doctor recommends `asm remove <name>` even when nothing is on disk.
 	lockIdx := skilllock.LoadIndex()
 	for name := range want {
@@ -183,7 +219,7 @@ func Run(cfg *config.Config, vl *vendorlist.List, opt Options) (*Result, error) 
 	// Disk paths and/or orphan skill-lock entries are both uninstall targets.
 	// KeepLock means lock-only names are not actionable.
 	lockCleanup := !opt.KeepLock && len(plan.LockOnly) > 0
-	if len(plan.Planned) == 0 && !lockCleanup {
+	if len(plan.Planned) == 0 && !lockCleanup && len(plan.GateNames) == 0 {
 		fmt.Fprintln(opt.Stdout, "没有可卸载的全局 skill。")
 		for _, s := range plan.Skipped {
 			fmt.Fprintf(opt.Stdout, "  skip: %s\n", s)
@@ -202,6 +238,9 @@ func Run(cfg *config.Config, vl *vendorlist.List, opt Options) (*Result, error) 
 		for _, it := range plan.Planned {
 			fmt.Fprintf(opt.Stdout, "  [%s] %s  %s  (%s)\n", it.Kind, it.Name, fsutil.RelHome(it.Path), it.Tool)
 		}
+	}
+	if len(plan.GateNames) > 0 {
+		fmt.Fprintf(opt.Stdout, "将清理技能启用/关闭记录：%s\n", strings.Join(plan.GateNames, ", "))
 	}
 	if lockCleanup {
 		if len(plan.Planned) == 0 {
@@ -245,12 +284,30 @@ func Run(cfg *config.Config, vl *vendorlist.List, opt Options) (*Result, error) 
 			dirs = append(dirs, it)
 		}
 	}
+	failedNames := map[string]bool{}
 	for _, it := range append(links, dirs...) {
 		if err := os.RemoveAll(it.Path); err != nil {
 			plan.Failed = append(plan.Failed, it.Path+": "+err.Error())
+			failedNames[strings.ToLower(it.Name)] = true
 			continue
 		}
 		plan.Removed = append(plan.Removed, it.Path)
+	}
+
+	var clearGates []string
+	for _, name := range plan.GateNames {
+		if !failedNames[strings.ToLower(name)] {
+			clearGates = append(clearGates, name)
+		}
+	}
+	if len(clearGates) > 0 {
+		gates, err := skillgate.Open(cfg)
+		if err == nil {
+			err = gates.Forget(clearGates)
+		}
+		if err != nil {
+			plan.Failed = append(plan.Failed, "skill-gates: "+err.Error())
+		}
 	}
 
 	if !opt.KeepLock {
