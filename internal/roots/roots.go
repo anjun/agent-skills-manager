@@ -11,7 +11,7 @@ import (
 
 // Root is a known skill root directory.
 type Root struct {
-	Tool   string // agents|claude|cursor|grok|codex|gemini|extra|project
+	Tool   string // agents|claude|cursor|grok|codex|gemini|antigravity|extra|project
 	Path   string // absolute
 	Kind   string // user|vendor|canonical|project
 	Wire   bool   // after migrate, create symlinks here for user skills
@@ -20,6 +20,9 @@ type Root struct {
 // Project skill directory names under a repo root (agentskills.io + common tool layouts).
 var projectSkillRels = []string{
 	".agents/skills",
+	".agent/skills",
+	"_agents/skills",
+	"_agent/skills",
 	".claude/skills",
 	".cursor/skills",
 	".codex/skills",
@@ -55,16 +58,9 @@ func DefaultRoots(cfg *config.Config) []Root {
 	add("grok", ".grok/skills", "user", true)
 	add("codex", ".codex/skills", "user", true)
 	add("gemini", ".gemini/skills", "user", true)
+	add("antigravity", ".gemini/config/skills", "user", true)
 
 	// secondary user roots (scan; wire only if listed in WireTools and Wire true)
-	if cfg.ToolEnabled("gemini") {
-		out = append(out, Root{
-			Tool: "gemini",
-			Path: fsutil.Abs(filepath.Join(home, ".gemini/config/skills")),
-			Kind: "user",
-			Wire: false, // wire primary ~/.gemini/skills only
-		})
-	}
 	if cfg.ToolEnabled("codex") {
 		out = append(out, Root{
 			Tool: "codex",

@@ -77,7 +77,7 @@ func Run(cfg *config.Config, vl *vendorlist.List) (*Result, error) {
 
 // ComputeWireGaps finds canonical skills that lack correct tool symlinks.
 // Manual drops into ~/.agents/skills are the main case: content is home, but
-// claude/cursor/grok/codex/gemini roots may have nothing yet.
+// claude/cursor/grok/codex/gemini/antigravity roots may have nothing yet.
 func ComputeWireGaps(cfg *config.Config, res *Result) []WireGap {
 	if res == nil {
 		return nil

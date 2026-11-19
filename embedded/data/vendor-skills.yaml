@@ -11,6 +11,7 @@ path_globs:
   - "~/.codex/vendor/**"
   - "~/.codex/vendor_imports/**"
   - "~/.gemini/config/plugins/**/skills/**"
+  - "~/.gemini/antigravity/**"
   - "~/.gemini/antigravity*/**"
   - "~/.gemini/antigravity-backup/**"
   - "**/Application Support/**/skills/**"
@@ -55,9 +56,13 @@ names_by_tool:
     - plan
     - discovery
   gemini:
-    # Extension / framework meta skills often land under config/skills.
+    # Extension / framework meta skills often land under Gemini dirs.
     - using-superpowers
     - find-skills
+  antigravity:
+    # Built-in and plugin skills live under ~/.gemini/antigravity/builtin/skills
+    # and ~/.gemini/config/plugins/**/skills (covered by path_globs).
+    []
 
 # Always vendor if name matches (any tool root).
 # These are Grok platform skills that may live as real dirs under ~/.grok/skills

@@ -4,7 +4,7 @@
 
 **Agent skills home & governance hub** (alias **`asm`**).
 
-Discover skills on this machine / in projects, classify them, unify under `~/.agents/skills/`, and wire Claude / Cursor / Grok / Codex / Gemini (and similar) with symlinks. For skills with **proven provenance**, check (and optionally apply) upstream updates.
+Discover skills on this machine / in projects, classify them, unify under `~/.agents/skills/`, and wire Claude / Cursor / Grok / Codex / Gemini / Antigravity (and similar) with symlinks. For skills with **proven provenance**, check (and optionally apply) upstream updates.
 
 - **In scope**: multi-tool inventory, canonical home, conflict handling, doctor, outdated, self-update, enable/disable gates  
 - **Out of scope**: replacing [`npx skills`](https://github.com/vercel-labs/skills) as a marketplace installer  

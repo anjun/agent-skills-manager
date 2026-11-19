@@ -130,3 +130,58 @@ func TestBuildWiresOnlyMissingLinks(t *testing.T) {
 		t.Fatal("claude should be skip already-linked")
 	}
 }
+
+func TestBuildMigratesAndRewiresAntigravitySkill(t *testing.T) {
+	home := t.TempDir()
+	agents := filepath.Join(home, ".agents", "skills")
+	agSkill := filepath.Join(home, ".gemini", "config", "skills", "ag-only")
+
+	cfg := config.Default()
+	cfg.Home = home
+	cfg.AgentsSkills = agents
+	cfg.OnlyTools = []string{"antigravity", "gemini"}
+	cfg.NoProject = true
+	cfg.NoProbe = true
+
+	res := &scan.Result{
+		Entries: []scan.Entry{
+			{
+				Class: scan.ClassUser,
+				Name:  "ag-only",
+				Path:  agSkill,
+				Tool:  "antigravity",
+				Hash:  "h-ag",
+			},
+		},
+	}
+
+	p := Build(cfg, res)
+	var migrated, linkedAG, linkedGemini bool
+	for _, a := range p.Actions {
+		if a.Name != "ag-only" {
+			continue
+		}
+		switch a.Type {
+		case ActionMigrate:
+			if a.SourcePath == agSkill && a.DestPath == filepath.Join(agents, "ag-only") {
+				migrated = true
+			}
+		case ActionLink:
+			if a.Tool == "antigravity" && a.SourcePath == agSkill && a.DestPath == filepath.Join(agents, "ag-only") {
+				linkedAG = true
+			}
+			if a.Tool == "gemini" && a.SourcePath == filepath.Join(home, ".gemini", "skills", "ag-only") {
+				linkedGemini = true
+			}
+		}
+	}
+	if !migrated {
+		t.Fatalf("expected migrate from %s, actions=%+v", agSkill, p.Actions)
+	}
+	if !linkedAG {
+		t.Fatalf("expected symlink restored at %s for antigravity, actions=%+v", agSkill, p.Actions)
+	}
+	if !linkedGemini {
+		t.Fatalf("expected symlink wired for gemini, actions=%+v", p.Actions)
+	}
+}

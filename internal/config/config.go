@@ -54,7 +54,7 @@ func Default() *Config {
 		AgentsSkills:  filepath.Join(home, ".agents", "skills"),
 		StateDir:      filepath.Join(home, ".local", "state", AppName),
 		ConfigDir:     filepath.Join(home, ".config", AppName),
-		WireTools:     []string{"claude", "cursor", "grok", "codex", "gemini"},
+		WireTools:     []string{"claude", "cursor", "grok", "codex", "gemini", "antigravity"},
 		Strategy:      "interactive",
 		Lang:          i18n.FromEnv(), // default zh unless env overrides
 		DisabledTools: map[string]bool{},

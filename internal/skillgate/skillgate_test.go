@@ -21,7 +21,7 @@ func testCfg(t *testing.T) *config.Config {
 		t.Fatal(err)
 	}
 	// wire roots
-	for _, rel := range []string{".claude/skills", ".cursor/skills", ".grok/skills", ".codex/skills", ".gemini/skills"} {
+	for _, rel := range []string{".claude/skills", ".cursor/skills", ".grok/skills", ".codex/skills", ".gemini/skills", ".gemini/config/skills"} {
 		if err := fsutil.EnsureDir(filepath.Join(home, rel)); err != nil {
 			t.Fatal(err)
 		}
@@ -185,5 +185,50 @@ func TestDisableMissingDoesNotCreateGate(t *testing.T) {
 	}
 	if len(s.List()) != 0 {
 		t.Fatalf("phantom gates created: %v", s.List())
+	}
+}
+
+func TestDisableEnableAntigravityIndependentOfGemini(t *testing.T) {
+	cfg := testCfg(t)
+	name := "demo"
+	agents := filepath.Join(cfg.AgentsSkills, name)
+	writeSkill(t, agents)
+
+	agLink := filepath.Join(cfg.Home, ".gemini", "config", "skills", name)
+	gemLink := filepath.Join(cfg.Home, ".gemini", "skills", name)
+	for _, link := range []string{agLink, gemLink} {
+		if err := fsutil.SymlinkRel(agents, link); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	s, err := Open(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Disable(name, []string{"antigravity"}); err != nil {
+		t.Fatal(err)
+	}
+	if !s.IsToolOff(name, "antigravity") {
+		t.Fatal("antigravity should be off")
+	}
+	if s.IsToolOff(name, "gemini") {
+		t.Fatal("gemini should remain on")
+	}
+	if _, err := os.Lstat(agLink); !os.IsNotExist(err) {
+		t.Fatalf("antigravity link should be removed: %v", err)
+	}
+	if _, err := os.Lstat(gemLink); err != nil {
+		t.Fatalf("gemini link should remain: %v", err)
+	}
+
+	if _, err := s.Enable(name, []string{"antigravity"}); err != nil {
+		t.Fatal(err)
+	}
+	if s.IsToolOff(name, "antigravity") {
+		t.Fatal("antigravity should be on")
+	}
+	if _, err := os.Lstat(agLink); err != nil {
+		t.Fatalf("antigravity link should be restored: %v", err)
 	}
 }

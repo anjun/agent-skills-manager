@@ -13,7 +13,7 @@ Complements [`npx skills`](https://github.com/vercel-labs/skills) (marketplace i
 | 3 | Name conflicts | Interactive default; hash merge; `--strategy keep-agents\|keep-newest\|skip`. |
 | 4 | Vendor detection | Path globs + **Grok `inspect` probe** + static denylist fallback for other tools. |
 | 5 | Project skills | Never migrate; inventory + **outdated check** allowed. |
-| 6 | Symlink wire | claude, cursor, grok, codex, gemini user roots. |
+| 6 | Symlink wire | claude, cursor, grok, codex, gemini, antigravity user roots. |
 | 7 | Stack | Go single binary (`agent-skills-manager` + alias `asm`) |
 | 8 | Rollback | Transaction log + `undo` |
 | 9 | Product name | **agent-skills-manager** / **asm** |
@@ -71,10 +71,11 @@ Bare `asm` opens Bubble Tea menu when stdout is a TTY and `--json` is not set; a
 ~/.cursor/skills/<name> -> ...
 ~/.grok/skills/<name>   -> ...       # only if user-owned; vendor entries stay real dirs
 ~/.codex/skills/<name>  -> ...       # user skills only; NEVER migrate/link over .system/
-~/.gemini/skills/<name> -> ...       # official Gemini user root
-# Note: Gemini already treats ~/.agents/skills as an alias (precedence over ~/.gemini/skills
-# within the same tier). After unify, Gemini may need no symlink at all if it only reads agents —
-# still wire ~/.gemini/skills for tools/docs that only look there, and for skills already living under config/skills.
+~/.gemini/skills/<name> -> ...       # official Gemini CLI user root
+~/.gemini/config/skills/<name> -> ... # Antigravity App global skills root
+# Note: Gemini CLI already treats ~/.agents/skills as an alias (precedence over ~/.gemini/skills
+# within the same tier), while Antigravity App reads ~/.gemini/config/skills. Wiring both keeps
+# Gemini CLI and Antigravity App independently controllable via --tool gemini / --tool antigravity.
 ```
 
 ### Known user-level skill roots (scan allowlist, v1)
@@ -88,12 +89,12 @@ Bare `asm` opens Bubble Tea menu when stdout is a TTY and `--json` is not set; a
 | Codex | `~/.codex/skills` | user; **`~/.codex/skills/.system`** = vendor (plan, skill-creator, …) |
 | Codex (extra) | `~/.codex/.agents/skills`, `~/.codex/vendor_imports/**` | vendor_imports = vendor |
 | **Gemini CLI** | **`~/.gemini/skills`** | official user root ([docs](https://geminicli.com/docs/cli/skills/)); also natively aliases **`~/.agents/skills`** (agents 优先于 `.gemini/skills`) |
-| Gemini (extra) | `~/.gemini/config/skills` | 部分安装把用户 skill 放这里 → **scan + 可 migrate** |
-| Gemini (vendor) | `~/.gemini/config/plugins/**/skills`, `~/.gemini/antigravity*/**` | extension / backup → vendor / ignore |
+| **Antigravity App** | **`~/.gemini/config/skills`** | global user root (independent wire tool `antigravity`); project dirs also support `.agents/`, `.agent/`, `_agents/`, `_agent/` |
+| Antigravity / Gemini (vendor) | `~/.gemini/config/plugins/**/skills`, `~/.gemini/antigravity*/**` | built-in / plugin / backup → vendor / ignore |
 
 **Codex caveat:** some builds historically ignored *symlinked* skill trees ([openai/codex#9365](https://github.com/openai/codex/issues/9365)). Symlink first; `doctor` warn; optional `--codex-mode copy|symlink`.
 
-**Gemini note:** 官方已把 `~/.agents/skills` 当 alias 且同层优先于 `~/.gemini/skills`。归口后 Gemini 往往**直接吃 agents 真源**即可；仍接线 `~/.gemini/skills`（及 migrate `config/skills` 里的用户 skill）以覆盖只认 `.gemini` 路径的场景。
+**Gemini / Antigravity note:** Gemini CLI 官方把 `~/.agents/skills` 当 alias 且同层优先于 `~/.gemini/skills`，但 Antigravity App 全局技能只读取 `~/.gemini/config/skills`。两者拆分为独立接线工具 `gemini` 与 `antigravity`，可分别通过 `--tool` 独立开关。
 
 State:
 

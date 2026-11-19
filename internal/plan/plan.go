@@ -228,7 +228,7 @@ func Build(cfg *config.Config, res *scan.Result) *Plan {
 			})
 		}
 
-		// Real copies outside wire roots (e.g. ~/.gemini/config/skills) → replace with link.
+		// Real copies outside wire roots (e.g. ~/.codex/.agents/skills) → replace with link.
 		for _, c := range contents {
 			if c.path == primary.path || under(c.path, p.AgentsDir) {
 				continue

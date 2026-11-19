@@ -105,3 +105,37 @@ names_by_tool:
 		t.Fatalf("fallback denylist expected, got ok=%v reason=%s", ok, reason)
 	}
 }
+
+func TestAntigravityVendorPathsDoNotBlockUserSkills(t *testing.T) {
+	yaml := []byte(`
+path_globs:
+  - "~/.gemini/config/plugins/**/skills/**"
+  - "~/.gemini/antigravity/**"
+  - "~/.gemini/antigravity*/**"
+  - "~/.gemini/antigravity-backup/**"
+`)
+	cfg := config.Default()
+	l, err := Load(yaml, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, vp := range []string{
+		"/Users/me/.gemini/antigravity/builtin/skills/antigravity-guide",
+		"/Users/me/.gemini/antigravity-backup/skills/foo",
+		"/Users/me/.gemini/config/plugins/my-plugin/skills/foo",
+	} {
+		if !l.IsVendorPath(vp) {
+			t.Fatalf("expected vendor path: %s", vp)
+		}
+	}
+
+	for _, up := range []string{
+		"/Users/me/.gemini/config/skills/antigravity-helper",
+		"/Users/me/.agents/skills/antigravity-helper",
+	} {
+		if l.IsVendorPath(up) {
+			t.Fatalf("user skill path must not be classified as vendor: %s", up)
+		}
+	}
+}

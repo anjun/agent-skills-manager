@@ -163,7 +163,7 @@ func (l *List) IsVendorPath(absPath string) bool {
 	if strings.Contains(absPath, "bundled"+sep+"skills") {
 		return true
 	}
-	if strings.Contains(absPath, "antigravity") {
+	if strings.Contains(absPath, sep+".gemini"+sep+"antigravity") {
 		return true
 	}
 	if strings.Contains(absPath, sep+"plugins"+sep) && strings.Contains(absPath, sep+"skills") {

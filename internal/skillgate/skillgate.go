@@ -27,7 +27,7 @@ const (
 )
 
 // KnownTools are valid --tool values (wire tools).
-var KnownTools = []string{"claude", "cursor", "grok", "codex", "gemini"}
+var KnownTools = []string{"claude", "cursor", "grok", "codex", "gemini", "antigravity"}
 
 // Entry is gate state for one skill name.
 type Entry struct {

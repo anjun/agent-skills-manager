@@ -4,7 +4,7 @@
 
 **Agent Skills 归口与治理中枢**（别名 **`asm`**）。
 
-发现本机 / 项目中的 skills，分类后统一到 `~/.agents/skills/`，在 Claude / Cursor / Grok / Codex / Gemini 等目录用符号链接接线；并支持对**可证明有上游**的 skill 做**只读**更新检查。
+发现本机 / 项目中的 skills，分类后统一到 `~/.agents/skills/`，在 Claude / Cursor / Grok / Codex / Gemini / Antigravity 等目录用符号链接接线；并支持对**可证明有上游**的 skill 做**只读**更新检查。
 
 - **做强**：多工具盘点、真源归口、冲突处理、doctor、outdated、工具自更新  
 - **不做**：替代 [`npx skills`](https://github.com/vercel-labs/skills) 的 marketplace 安装  
